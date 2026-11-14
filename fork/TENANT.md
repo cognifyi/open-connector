@@ -31,6 +31,29 @@ Instance-singleton (deliberately **not** tenant-scoped): `instance_identity`,
 `managed_project`, `marketplace_config`, `runtime_policy`, `oauth_clients`,
 `oauth_signing_keys`, `oauth_sources`.
 
+## Storage scoping (OC-1b)
+
+Scope is **explicit**, not ambient (`src/tenant/tenant-scope.ts`):
+
+- `RuntimeDatabase.forTenant(tenantId)` returns a sibling view whose
+  tenant-scoped stores are all bound to that tenant. `forInstance()` is the
+  named escape hatch (`scope === null`) for cross-tenant maintenance —
+  secret rotation, sweeps, `resetRuntimeData`, `SaasProjectStore` cleanup.
+- The default view is bound to `local`, so pre-OC-1 single-tenant callers
+  keep working unchanged; OC-1c binds request scope at the boundary instead.
+- Stores compose predicates through `tenantPredicate` / `tenantWhere`
+  (postgres: `tenantPredicatePg` / `tenantWherePg` with `$N` numbering) and
+  stamp rows with `tenantForInsert`. A `null` scope degrades every predicate
+  to `1 = 1` — there is no silent fallback to a tenant.
+- Secret rotation (`rotateSecretCodec`) is instance-scoped and pairs every
+  read row's `tenant_id` back into its `update` predicate, so same-named
+  rows in different tenants are never overwritten by each other's value.
+
+Cross-tenant coverage lives in `src/server/storage/tenant-scope.cases.ts`,
+wired into all three backend suites: same-name connections, idempotency-key
+reuse, OAuth state/code/token lookup, runtime tokens, run logs, client
+configs, provider preferences, and the `forInstance()` escape hatch.
+
 ## Invariants for later OC-1 tasks
 
 - Every query against a tenant-scoped table filters `tenant_id`; every write

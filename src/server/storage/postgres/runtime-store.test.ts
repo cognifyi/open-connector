@@ -13,6 +13,7 @@ import { defaultMigrationSource } from "../migration-source.ts";
 import { createNodeRuntimeDatabase, migratePostgresRuntimeDatabase } from "../node-runtime-database.ts";
 import { RuntimeTokenService } from "../runtime-token-service.ts";
 import { saasProjectStoreTests, saasMaintenanceTests } from "../saas-project-store.cases.ts";
+import { tenantScopeTests } from "../tenant-scope.cases.ts";
 import { triggerStoreTests } from "../trigger-store.cases.ts";
 import { assertPostgresSchemaReady, migratePostgresDatabase } from "./migrations.ts";
 import { PostgresRuntimeDatabase } from "./runtime-store.ts";
@@ -327,6 +328,7 @@ describe("PostgresRuntimeDatabase with PGlite", () => {
   connectionStoreTests(() => database);
   customMcpStoreTests(() => database);
   triggerStoreTests(() => database);
+  tenantScopeTests(() => database);
 
   it("reads custom MCP catalogs without acquiring the connection transaction lock", async () => {
     const query = vi.spyOn(Client.prototype, "query");

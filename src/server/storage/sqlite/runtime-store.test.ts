@@ -13,6 +13,7 @@ import { customMcpStoreTests } from "../custom-mcp-store.cases.ts";
 import { createDirectoryMigrationSource, defaultMigrationSource } from "../migration-source.ts";
 import { RuntimeTokenService } from "../runtime-token-service.ts";
 import { saasProjectStoreTests, saasMaintenanceTests } from "../saas-project-store.cases.ts";
+import { tenantScopeTests } from "../tenant-scope.cases.ts";
 import { triggerStoreTests } from "../trigger-store.cases.ts";
 import { SqliteRunLogStore, SqliteRuntimeDatabase } from "./runtime-store.ts";
 
@@ -576,7 +577,8 @@ describe("SqliteRuntimeDatabase", () => {
     ]) {
       raw.exec(readFileSync(new URL(`../../../../migrations/${migration}`, import.meta.url), "utf8"));
     }
-    const store = new SqliteRunLogStore(raw, 1);
+    raw.exec("alter table runs add column tenant_id text not null default 'local'");
+    const store = new SqliteRunLogStore(raw, 1, "local");
     await store.add(createRun("run-1", "2026-06-30T00:00:00.000Z"));
     raw.exec(`
       create trigger fail_run_retention before delete on runs begin
@@ -1181,6 +1183,7 @@ describe("SQLite connection requests", () => {
   customMcpStoreTests(() => database);
   triggerStoreTests(() => database);
   saasProjectStoreTests(() => database);
+  tenantScopeTests(() => database);
 });
 
 it("rolls back credential writes when the request success update fails and recovers after restart", async () => {
