@@ -330,7 +330,7 @@ export class SqliteMarketplaceStore implements IMarketplaceStore {
   async setProviderPreference(preference: ProviderPreference): Promise<void> {
     this.database
       .prepare(
-        "insert into provider_preferences (service, enabled, created_at, updated_at) values (?, ?, ?, ?) on conflict(service) do update set enabled = excluded.enabled, updated_at = excluded.updated_at",
+        "insert into provider_preferences (service, enabled, created_at, updated_at) values (?, ?, ?, ?) on conflict(tenant_id, service) do update set enabled = excluded.enabled, updated_at = excluded.updated_at",
       )
       .run(preference.service, preference.enabled ? 1 : 0, preference.createdAt, preference.updatedAt);
   }
@@ -1241,7 +1241,7 @@ async function setServiceJson(input: SetServiceJsonInput): Promise<void> {
       `
       insert into ${input.table} (service, value, updated_at)
       values (?, ?, ?)
-      on conflict(service) do update set value = excluded.value, updated_at = excluded.updated_at
+      on conflict(tenant_id, service) do update set value = excluded.value, updated_at = excluded.updated_at
     `,
     )
     .run(input.service, await input.secretCodec.encode(JSON.stringify(input.value)), new Date().toISOString());

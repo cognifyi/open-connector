@@ -338,7 +338,7 @@ class PostgresMarketplaceStore implements IMarketplaceStore {
 
   async setProviderPreference(preference: ProviderPreference): Promise<void> {
     await this.pool.query(
-      "insert into provider_preferences (service, enabled, created_at, updated_at) values ($1, $2, $3, $4) on conflict(service) do update set enabled = excluded.enabled, updated_at = excluded.updated_at",
+      "insert into provider_preferences (service, enabled, created_at, updated_at) values ($1, $2, $3, $4) on conflict(tenant_id, service) do update set enabled = excluded.enabled, updated_at = excluded.updated_at",
       [preference.service, preference.enabled, preference.createdAt, preference.updatedAt],
     );
   }
@@ -366,7 +366,7 @@ class PostgresOAuthClientConfigStore implements IOAuthClientConfigStore {
       `
         insert into oauth_client_configs (service, value, updated_at)
         values ($1, $2, $3)
-        on conflict(service) do update set value = excluded.value, updated_at = excluded.updated_at
+        on conflict(tenant_id, service) do update set value = excluded.value, updated_at = excluded.updated_at
       `,
       [config.service, await this.secretCodec.encode(JSON.stringify(config)), new Date().toISOString()],
     );
