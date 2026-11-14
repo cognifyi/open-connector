@@ -948,7 +948,7 @@ class PostgresIdempotencyStore implements IIdempotencyStore {
             key_hash, claim_id, request_hash, state, response_value, created_at, expires_at
           )
           values ($1, $2, $3, 'in_progress', null, $4, $5)
-          on conflict(key_hash) do nothing
+          on conflict(tenant_id, key_hash) do nothing
           returning key_hash
         `,
         [input.keyHash, input.claimId, input.requestHash, input.now, input.expiresAt],

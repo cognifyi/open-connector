@@ -17,7 +17,6 @@ alter table connections
 alter table connection_requests add column tenant_id text not null default 'local';
 alter table runtime_tokens add column tenant_id text not null default 'local';
 alter table runs add column tenant_id text not null default 'local';
-alter table idempotency_records add column tenant_id text not null default 'local';
 alter table trigger_subscriptions add column tenant_id text not null default 'local';
 alter table trigger_source_applications add column tenant_id text not null default 'local';
 alter table oauth_states add column tenant_id text not null default 'local';
@@ -44,3 +43,9 @@ alter table provider_preferences
   add column tenant_id text not null default 'local',
   drop constraint provider_preferences_pkey,
   add primary key (tenant_id, service);
+
+-- key_hash is caller-controlled input: scope the claim key per tenant.
+alter table idempotency_records
+  add column tenant_id text not null default 'local',
+  drop constraint idempotency_records_pkey,
+  add primary key (tenant_id, key_hash);

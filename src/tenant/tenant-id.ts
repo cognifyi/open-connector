@@ -13,7 +13,7 @@ const TENANT_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$/;
 const RESERVED_TENANT_IDS = new Set(["all"]);
 
 export function isTenantId(value: string): boolean {
-  return TENANT_ID_PATTERN.test(value) && !RESERVED_TENANT_IDS.has(value);
+  return TENANT_ID_PATTERN.test(value) && !RESERVED_TENANT_IDS.has(value.toLowerCase());
 }
 
 /**

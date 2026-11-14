@@ -795,7 +795,7 @@ export class D1IdempotencyStore implements IIdempotencyStore {
             key_hash, claim_id, request_hash, state, response_value, created_at, expires_at
           )
           values (?, ?, ?, 'in_progress', null, ?, ?)
-          on conflict(key_hash) do nothing
+          on conflict(tenant_id, key_hash) do nothing
           returning claim_id
         `,
         )

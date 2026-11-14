@@ -12,7 +12,7 @@ describe("tenant id", () => {
   });
 
   it("rejects wildcards, separators, and empty values", () => {
-    for (const id of ["", "*", "all", "-x", "a/b", "a:b", "a b", "x".repeat(64), "../escape"]) {
+    for (const id of ["", "*", "all", "ALL", "All", "-x", "a/b", "a:b", "a b", "x".repeat(64), "../escape"]) {
       expect(isTenantId(id), id).toBe(false);
       expect(() => requireTenantId(id), id).toThrow(TenantError);
     }

@@ -1,6 +1,7 @@
 /**
- * Error with a stable code suitable for HTTP responses, raised by tenant
- * resolution and tenant-scope checks. Route handlers map `code` to a status.
+ * Error with a stable code and HTTP status, raised by tenant resolution and
+ * tenant-scope checks. Route handlers translate `status`/`code` directly into
+ * the response.
  */
 export class TenantError extends Error {
   readonly code: string;

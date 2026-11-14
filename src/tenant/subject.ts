@@ -33,9 +33,9 @@ export function formatSubject(subject: Subject): string {
   return `${subject.kind}:${subject.id}`;
 }
 
-/** Validate a caller-supplied subject. Rejects the reserved legacy value. */
+/** Validate a caller-supplied subject; the legacy owner is rejected implicitly by the grammar. */
 export function requireSubject(value: string): string {
-  if (value === LEGACY_LOCAL_SUBJECT || !isSubject(value)) {
+  if (!isSubject(value)) {
     throw new TenantError("invalid_subject", `invalid subject: ${JSON.stringify(value)}`);
   }
   return value;

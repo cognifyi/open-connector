@@ -46,7 +46,6 @@ create index connections_managed_project on connections (managed_project_id);
 alter table connection_requests add column tenant_id text not null default 'local';
 alter table runtime_tokens add column tenant_id text not null default 'local';
 alter table runs add column tenant_id text not null default 'local';
-alter table idempotency_records add column tenant_id text not null default 'local';
 alter table trigger_subscriptions add column tenant_id text not null default 'local';
 alter table trigger_source_applications add column tenant_id text not null default 'local';
 alter table oauth_states add column tenant_id text not null default 'local';
@@ -121,3 +120,30 @@ insert into provider_preferences_next (service, enabled, created_at, updated_at)
 select service, enabled, created_at, updated_at from provider_preferences;
 drop table provider_preferences;
 alter table provider_preferences_next rename to provider_preferences;
+
+-- idempotency_records: key_hash is caller-controlled input, so the primary key
+-- becomes (tenant_id, key_hash). A global key would let one tenant squat on or
+-- replay another tenant's idempotency keys.
+create table idempotency_records_next (
+  tenant_id text not null default 'local',
+  key_hash text not null,
+  claim_id text not null,
+  request_hash text not null,
+  state text not null check (state in ('in_progress', 'completed')),
+  response_value text,
+  created_at text not null,
+  expires_at text not null,
+  check (
+    (state = 'in_progress' and response_value is null)
+    or (state = 'completed' and response_value is not null)
+  ),
+  primary key (tenant_id, key_hash)
+);
+insert into idempotency_records_next (
+  key_hash, claim_id, request_hash, state, response_value, created_at, expires_at
+)
+select key_hash, claim_id, request_hash, state, response_value, created_at, expires_at
+from idempotency_records;
+drop table idempotency_records;
+alter table idempotency_records_next rename to idempotency_records;
+create index idempotency_records_expires_at_idx on idempotency_records (expires_at);
