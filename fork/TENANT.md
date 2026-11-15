@@ -1,7 +1,7 @@
 # Tenant model (OC-1)
 
 In-repo multi-tenancy for the shared Pazity instance. Design source:
-`labs/plan/4.功能设计/miles/2026-11-omni-brain-evolution/12-open-connector-development.md` §3.2.
+`plan/0.战役工单/07-2026-11-omni-brain演进/12-open-connector-development.md` §3.2.
 
 ## Grammar
 
@@ -135,4 +135,6 @@ configs, provider preferences, and the `forInstance()` escape hatch.
   store assertions including instance-scope maintenance views). Statements
   without a tenant predicate are instance-level by design: `resetRuntimeData`,
   `rotateSecretCodec`, hash lookups, maintenance sweeps, and the SaaS project
-  accounting store.
+  accounting store. Transit files (`/api/files`) are also instance-level by
+  design: ids are unguessable and TTL-bound; a file uploaded under one tenant
+  is reachable by file id regardless of tenant.

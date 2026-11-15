@@ -1,5 +1,6 @@
 import type { ActionDefinition, ProviderDefinition } from "../../core/types.ts";
 
+import { rmSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCatalogStore } from "../../catalog-store.ts";
 import { ProviderLoader } from "../../providers/provider-loader.ts";
@@ -53,6 +54,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   for (const database of databases.splice(0)) database.close();
+  rmSync(".tmp/tenant-isolation-tests", { recursive: true, force: true });
 });
 
 interface CallOptions {
@@ -66,7 +68,22 @@ async function setup() {
   databases.push(database);
   const { app } = await createConnectApp({
     catalog: createCatalogStore([provider], { executableActionIds: [echoAction.id] }),
-    providerLoader: new ProviderLoader({ example: async () => ({ executors: {} }) }),
+    providerLoader: new ProviderLoader({
+      example: async () => ({
+        executors: {},
+        // Echo whether the scoped credential resolution produced a credential —
+        // this is what proves a tenant's proxy runs never see another tenant's
+        // connection secrets.
+        proxy: async (_input, context) => ({
+          ok: true,
+          response: {
+            status: 200,
+            headers: {},
+            data: { credential: (await context.getCredential("example")) ? "present" : "absent" },
+          },
+        }),
+      }),
+    }),
     runtimeDatabase: database,
     publicOrigin: "http://localhost",
     configuredOrigin: "http://localhost",
@@ -88,11 +105,11 @@ async function setup() {
       },
       body: input.body === undefined ? undefined : JSON.stringify(input.body),
     });
-  const mint = async (tenant: string, name = `${tenant}-token`) => {
+  const mint = async (tenant: string, name = `${tenant}-token`, policy = TOKEN_POLICY) => {
     const created = await call(`/api/runtime-tokens?tenant=${tenant}`, {
-      body: { name, ...TOKEN_POLICY },
+      body: { name, ...policy },
     });
-    if (created.status !== 200) throw new Error("PUT failed: " + (await created.text()));
+    if (created.status !== 200) throw new Error(`mint(${tenant}) failed: ${await created.text()}`);
     return ((await created.json()) as { token: string }).token;
   };
   return { app, database, call, mint };
@@ -155,8 +172,8 @@ describe("tenant isolation (real service graph)", () => {
     expect(mismatched.status).toBe(403);
     expect(await mismatched.json()).toMatchObject({ error: { code: "tenant_conflict" } });
     // The header selector conflicts the same way.
-    const headerMismatch = await call("/v1/actions?tenant=alpha", { token });
-    expect(headerMismatch.status).toBe(200);
+    const matchingSelector = await call("/v1/actions?tenant=alpha", { token });
+    expect(matchingSelector.status).toBe(200);
     const headerOnly = await appRequest(app, "/v1/actions", token, { "x-connect-tenant": "beta" });
     expect(headerOnly.status).toBe(403);
   });
@@ -236,8 +253,11 @@ describe("tenant isolation (real service graph)", () => {
         input: { marker: "alpha-1" },
       },
     );
+    // No connection is seeded, so runs fail with a serialized failure body —
+    // what matters is that it executes at all (not an auth/claim rejection).
     expect(first.status).not.toBe(401);
-    const firstBody = await first.json();
+    const firstBody = (await first.json()) as { success: boolean; errorCode?: string };
+    expect(firstBody.success).toBe(false);
 
     // Same key + different input in the SAME tenant is a conflict.
     const conflict = await appRequest(
@@ -263,7 +283,9 @@ describe("tenant isolation (real service graph)", () => {
       },
     );
     expect(betaRun.status).not.toBe(409);
-    const betaBody = await betaRun.json();
+    const betaBody = (await betaRun.json()) as { success: boolean; errorCode?: string };
+    expect(betaBody.success).toBe(false);
+    expect(betaBody.errorCode).not.toBe("idempotency_key_conflict");
 
     // Replays stay inside their tenant: alpha replays alpha's, beta replays beta's.
     const alphaReplay = await appRequest(
@@ -299,15 +321,17 @@ describe("tenant isolation (real service graph)", () => {
         body: { input: {} },
       });
     }
-    const alphaRuns = (await (await call("/api/runs?tenant=alpha")).json()) as { items: unknown[] };
-    const betaRuns = (await (await call("/api/runs?tenant=beta")).json()) as { items: unknown[] };
+    const alphaRuns = (await (await call("/api/runs?tenant=alpha")).json()) as { items: { id: string }[] };
+    const betaRuns = (await (await call("/api/runs?tenant=beta")).json()) as { items: { id: string }[] };
     expect(alphaRuns.items).toHaveLength(1);
     expect(betaRuns.items).toHaveLength(1);
+    // Get-by-id does not cross tenants either.
+    expect((await call(`/api/runs/${alphaRuns.items[0].id}?tenant=beta`)).status).toBe(404);
     // Local produced nothing.
     expect(((await (await call("/api/runs")).json()) as { items: unknown[] }).items).toHaveLength(0);
   });
 
-  it("keeps every tenant-scoped table's rows inside its own scope", async () => {
+  it("keeps seeded rows inside their owning tenant across scoped stores", async () => {
     const { database } = await setup();
     const alpha = database.forTenant("alpha");
     const beta = database.forTenant("beta");
@@ -326,13 +350,15 @@ describe("tenant isolation (real service graph)", () => {
         extra: {},
         secretExtra: {},
       });
-      await db.idempotencyStore.claim({
-        keyHash: "same-key",
-        claimId: `claim-${marker}`,
-        requestHash: `hash-${marker}`,
-        now,
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      });
+      await expect(
+        db.idempotencyStore.claim({
+          keyHash: "same-key",
+          claimId: `claim-${marker}`,
+          requestHash: `hash-${marker}`,
+          now,
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        }),
+      ).resolves.toEqual({ kind: "acquired" });
     }
 
     // Instance view sees both; each tenant sees exactly its own.
@@ -340,5 +366,90 @@ describe("tenant isolation (real service graph)", () => {
     expect((await alpha.oauthClientConfigStore.get("example"))?.clientId).toBe("alpha-client");
     expect((await beta.oauthClientConfigStore.get("example"))?.clientId).toBe("beta-client");
     expect(await database.oauthClientConfigStore.get("example")).toBeUndefined();
+  });
+
+  it("keeps trigger subscriptions listable and cancellable only in their tenant", async () => {
+    const { call, database, mint } = await setup();
+    const alpha = database.forTenant("alpha");
+    // Subscription rows must reference a real local connection + token.
+    const created = await call("/api/connections/example?tenant=alpha", {
+      method: "PUT",
+      body: { authType: "api_key", values: { apiKey: "alpha-secret" } },
+    });
+    const connectionId = ((await created.json()) as { id: string }).id;
+    const connection = (await alpha.connectionStore.list()).find((row) => row.id === connectionId)!;
+    await mint("alpha");
+    const tokenId = ((await (await call("/api/runtime-tokens?tenant=alpha")).json()) as { id: string }[])[0].id;
+    const record = await alpha.triggerStore.insertFlowTrigger({
+      mode: "webhook",
+      id: "sub-alpha",
+      tokenId,
+      service: "example",
+      connectionId,
+      triggerId: "trigger-alpha",
+      connectionRevision: connection.revision,
+      providerAccountId: "acct-alpha",
+      requestKey: "key-alpha",
+      config: {},
+      endpointUrl: "https://hooks.example.com/alpha",
+      callbackNonce: "nonce-alpha",
+      callbackSecret: "secret-alpha",
+      checkpoint: null,
+      subscription: {},
+      reconcileAt: 0,
+      status: "active",
+    });
+    expect(record.id).toBe("sub-alpha");
+
+    const alphaList = (await (await call("/api/trigger-subscriptions?tenant=alpha")).json()) as {
+      id: string;
+    }[];
+    expect(alphaList.map((entry) => entry.id)).toContain("sub-alpha");
+    expect(await (await call("/api/trigger-subscriptions?tenant=beta")).json()).toEqual([]);
+    expect(await (await call("/api/trigger-subscriptions")).json()).toEqual([]);
+
+    // Beta cannot cancel or abandon alpha's subscription — the row stays active.
+    await call("/api/trigger-subscriptions/sub-alpha/cancel?tenant=beta", { body: {} });
+    await call("/api/trigger-subscriptions/sub-alpha/abandon?tenant=beta", { body: {} });
+    expect((await alpha.triggerStore.getFlowTrigger("sub-alpha"))?.status).toBe("active");
+  });
+
+  it("does not let a beta token reach an alpha connection through the proxy", async () => {
+    const { app, call, mint } = await setup();
+    await call("/api/connections/example?tenant=alpha", {
+      method: "PUT",
+      body: { authType: "api_key", values: { apiKey: "alpha-secret" } },
+    });
+    // Empty allowedConnections means "any connection" — the only difference
+    // between the two runs is whether the connection row is visible.
+    const alpha = await mint("alpha", "alpha-token", { ...TOKEN_POLICY, allowedConnections: [] });
+    const beta = await mint("beta", "beta-token", { ...TOKEN_POLICY, allowedConnections: [] });
+
+    const alphaRun = await appRequest(
+      app,
+      "/v1/proxy/example",
+      alpha,
+      {},
+      {
+        method: "GET",
+        endpoint: "/status",
+      },
+    );
+    const betaRun = await appRequest(
+      app,
+      "/v1/proxy/example",
+      beta,
+      {},
+      {
+        method: "GET",
+        endpoint: "/status",
+      },
+    );
+    const alphaBody = (await alphaRun.json()) as { data?: { data?: { credential?: string } } };
+    const betaBody = (await betaRun.json()) as { data?: { data?: { credential?: string } } };
+    // Both runs dispatch through the stub proxy executor; only alpha's resolves
+    // a credential. Beta's run executes without ever seeing the connection.
+    expect(alphaBody.data?.data?.credential).toBe("present");
+    expect(betaBody.data?.data?.credential).toBe("absent");
   });
 });
