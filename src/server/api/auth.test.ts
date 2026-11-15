@@ -23,7 +23,19 @@ describe("createLocalAuthMiddleware", () => {
         createLocalAuthMiddleware({
           hasRuntimeTokens,
           requireRuntimeAuth: mode === "required",
-          verifyRuntimeJwt: mode === "jwt" ? async (token) => token === "valid" : undefined,
+          verifyRuntimeJwt:
+            mode === "jwt"
+              ? async (token) =>
+                  token === "valid"
+                    ? {
+                        tokenId: "jwt:test",
+                        tenantId: "local",
+                        allowedActions: [],
+                        blockedActions: [],
+                        allowedProxies: [],
+                      }
+                    : undefined
+              : undefined,
           authMode: mode === "oauth" ? "oauth" : mode === "mixed" ? "mixed" : "runtime_token",
           resolveRuntimeToken:
             mode === "required" ? async (token) => (token === "valid" ? grant : undefined) : undefined,
@@ -290,7 +302,18 @@ const protectedRuntimeConfigurations: Array<{
   options: Parameters<typeof createLocalAuthMiddleware>[0];
 }> = [
   { name: "static token", options: { runtimeToken: "runtime-secret" } },
-  { name: "JWT", options: { verifyRuntimeJwt: async () => true } },
+  {
+    name: "JWT",
+    options: {
+      verifyRuntimeJwt: async () => ({
+        tokenId: "jwt:test",
+        tenantId: "local",
+        allowedActions: [],
+        blockedActions: [],
+        allowedProxies: [],
+      }),
+    },
+  },
   { name: "stored token", options: { hasRuntimeTokens: async () => true } },
   { name: "resolver without token count", options: { resolveRuntimeToken: async () => undefined } },
   {

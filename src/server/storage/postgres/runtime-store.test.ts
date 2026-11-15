@@ -174,6 +174,7 @@ describe("PostgreSQL migrations with PGlite", () => {
           { name: "0022_custom_mcp.sql" },
           { name: "0023_tenant.sql" },
           { name: "0024_trigger_source_tenant_pk.sql" },
+          { name: "0025_normalize_tenant_ids.sql" },
         ],
       });
 
@@ -243,6 +244,7 @@ describe("PostgreSQL migrations with a custom migration source", () => {
           { name: "0022_custom_mcp.sql" },
           { name: "0023_tenant.sql" },
           { name: "0024_trigger_source_tenant_pk.sql" },
+          { name: "0025_normalize_tenant_ids.sql" },
           { name: "9998_custom.sql" },
         ],
       });

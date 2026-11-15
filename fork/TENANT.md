@@ -118,6 +118,24 @@ configs, provider preferences, and the `forInstance()` escape hatch.
   `?subject=` (admin bearer) requests carry distinct owners. Admin can read a
   token-owned request only via `?subject=service:<tokenId>` — on-behalf
   completion is the intended protocol.
+- Verified JWTs (Keycloak/Hub JWKS) resolve to a tenant-bound `RuntimeGrant`:
+  the org claim (`org_id`/`orgId`/`tenant`/`tenant_id`, first present wins)
+  maps to `tenant_id`, and `sub` becomes `tokenId: jwt-<sub>` (base64url
+  fallback when `sub` is outside the subject grammar, so distinct subjects
+  never collide). An absent claim binds `local` — unless
+  `OOMOL_CONNECT_JWT_REQUIRE_ORG=true` is set for shared multi-tenant
+  deployments, where a token with no org claim is rejected. An unparseable
+  claim always fails closed. The grant's empty allow-lists match the OAuth
+  grant policy shape (actions/triggers/connections open, proxies denied —
+  same as every runtime credential).
+- `requireTenantId` normalizes once at the boundary (trim + lowercase), so a
+  JWT `Alpha-Team` claim, `?tenant=ALPHA`, and the `tenant_id` column can
+  never disagree by casing. `isTenantId` stays strict — stored ids are always
+  the normalized form.
+- `service:admin` lookups widen to the legacy `local-admin` owner
+  (`ownerAliases`): pre-OC-1 `connection_requests` rows remain reachable
+  through the canonical subject, and supersession/cancel/claim match both
+  spellings. New writes always use the `kind:id` grammar.
 
 ## Invariants for later OC-1 tasks
 

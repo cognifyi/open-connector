@@ -198,7 +198,9 @@ describe("ConnectServer", () => {
       auth: {
         verifyRuntimeJwt: async () => {
           now += 2;
-          return outcome !== "auth_failure";
+          return outcome !== "auth_failure"
+            ? { tokenId: "jwt:test", tenantId: "local", allowedActions: [], blockedActions: [], allowedProxies: [] }
+            : undefined;
         },
       },
       providerLoader: {
@@ -1513,7 +1515,11 @@ describe("ConnectServer", () => {
   it("accepts JWT access tokens alongside existing runtime tokens", async () => {
     const runtimeTokens = new RuntimeTokenService(new MemoryRuntimeTokenStore());
     const storedToken = await runtimeTokens.createToken("Stored client");
-    const verifyRuntimeJwt = vi.fn(async (token: string) => token === "jwt-access-token");
+    const verifyRuntimeJwt = vi.fn(async (token: string) =>
+      token === "jwt-access-token"
+        ? { tokenId: "jwt:test", tenantId: "local", allowedActions: [], blockedActions: [], allowedProxies: [] }
+        : undefined,
+    );
     const app = createTestServer([apiKeyProvider], {
       auth: {
         adminToken: "local-token",
@@ -1572,7 +1578,10 @@ describe("ConnectServer", () => {
     const app = createTestServer([apiKeyProvider], {
       auth: {
         adminToken: "local-token",
-        verifyRuntimeJwt: async (token) => token === "jwt-access-token",
+        verifyRuntimeJwt: async (token) =>
+          token === "jwt-access-token"
+            ? { tokenId: "jwt:test", tenantId: "local", allowedActions: [], blockedActions: [], allowedProxies: [] }
+            : undefined,
       },
     }).createApp();
 
@@ -2974,7 +2983,11 @@ describe("ConnectServer", () => {
 
   it("preserves admin, bootstrap, JWT, and unrestricted token connection access", async () => {
     const runtimeTokens = new RuntimeTokenService(new MemoryRuntimeTokenStore());
-    const verifyRuntimeJwt = vi.fn(async (token: string) => token === "jwt-access-token");
+    const verifyRuntimeJwt = vi.fn(async (token: string) =>
+      token === "jwt-access-token"
+        ? { tokenId: "jwt:test", tenantId: "local", allowedActions: [], blockedActions: [], allowedProxies: [] }
+        : undefined,
+    );
     const app = createTestServer([{ ...apiKeyProvider, actions: [echoAction] }], {
       auth: {
         adminToken: "local-token",
@@ -4875,22 +4888,12 @@ function createTestServer(providers: ProviderDefinition[], options: CreateTestSe
     customMcp,
     mcpOutputMode: options.mcpOutputMode,
     marketplace: options.marketplace,
-    catalog,
     publicOrigin: options.publicOrigin ?? "http://localhost:3000",
-    providerLoader,
-    connections,
-    oauthClientConfigs: clientConfigs,
-    oauthFlow,
-    actions: actionRunner,
-    idempotency,
     transitFiles,
     uploadTransitFile: options.uploadTransitFile,
     runtimeTokens,
     oauthClients: requestDatabase.oauthClientStore,
-    oauthCodes: requestDatabase.oauthCodeStore,
-    oauthTokens: requestDatabase.oauthTokenStore,
     oauthKeys: requestDatabase.oauthSigningKeyStore,
-    runtimeTokenStore: requestDatabase.runtimeTokenStore,
     runtimeDatabase: requestDatabase,
     services,
     runtimePolicyStore: options.runtimePolicyStore ?? new MemoryRuntimePolicyStore(),
@@ -4902,7 +4905,6 @@ function createTestServer(providers: ProviderDefinition[], options: CreateTestSe
       verifyRuntimeJwt: options.auth?.verifyRuntimeJwt,
     },
     actionPolicy: options.actionPolicy,
-    actionSearch: options.actionSearch,
     logger: options.logger,
     oauthCloseDelaySeconds: options.oauthCloseDelaySeconds,
     oauthResultOrigins: options.oauthResultOrigins,
@@ -5405,7 +5407,7 @@ it.each(["static", "jwt", "stored"])(
     if (mode === "stored") await runtimeTokens.createToken("existing");
     const auth =
       mode === "jwt"
-        ? { verifyRuntimeJwt: async () => false }
+        ? { verifyRuntimeJwt: async () => undefined }
         : mode === "static"
           ? { runtimeToken: "runtime-secret" }
           : {};

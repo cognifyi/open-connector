@@ -112,7 +112,9 @@ export function readTenantId(context: Context): string {
   const requested = queryTenant ?? headerTenant ?? undefined;
   const grantTenant = runtimeGrants.get(context.req.raw)?.tenantId;
   if (grantTenant) {
-    if (requested !== undefined && requested !== grantTenant) {
+    // Normalize before comparing so `?tenant=ALPHA` cannot false-conflict
+    // with a grant bound to `alpha`.
+    if (requested !== undefined && requireTenantId(requested) !== grantTenant) {
       throw new TenantError(
         "tenant_conflict",
         `Request tenant "${requested}" does not match the tenant the credential is bound to.`,
@@ -422,7 +424,9 @@ async function hasValidRuntimeToken(context: Context, options: LocalAuthOptions)
       runtimeGrants.set(context.req.raw, grant);
       return true;
     }
-    if (await (options.verifyRuntimeJwt?.(token) ?? false)) {
+    const jwtGrant = await options.verifyRuntimeJwt?.(token);
+    if (jwtGrant) {
+      runtimeGrants.set(context.req.raw, jwtGrant);
       return true;
     }
   }

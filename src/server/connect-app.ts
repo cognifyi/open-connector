@@ -232,15 +232,15 @@ export async function createConnectApp(options: ConnectAppOptions): Promise<Conn
   const services: ScopedServices = {
     ...root,
     forTenant: (tenantId) => {
-      requireTenantId(tenantId);
-      let view = scopedViews.get(tenantId);
+      const normalizedTenantId = requireTenantId(tenantId);
+      let view = scopedViews.get(normalizedTenantId);
       if (!view) {
-        view = buildServices(options.runtimeDatabase.forTenant(tenantId));
+        view = buildServices(options.runtimeDatabase.forTenant(normalizedTenantId));
         // A failed build must not poison the cache: later requests retry.
         view.catch(() => {
-          if (scopedViews.get(tenantId) === view) scopedViews.delete(tenantId);
+          if (scopedViews.get(normalizedTenantId) === view) scopedViews.delete(normalizedTenantId);
         });
-        scopedViews.set(tenantId, view);
+        scopedViews.set(normalizedTenantId, view);
         // Bound view retention; `local` is never evicted.
         for (const [key] of scopedViews) {
           if (scopedViews.size <= 128) break;
@@ -250,21 +250,7 @@ export async function createConnectApp(options: ConnectAppOptions): Promise<Conn
       return view;
     },
   };
-  const {
-    catalog,
-    providerLoader,
-    saasProject,
-    saasOAuth,
-    saas,
-    marketplace,
-    oauthClientConfigs,
-    customMcp,
-    connections,
-    actions,
-    oauthFlow,
-    triggers,
-    triggerMaintenance,
-  } = root;
+  const { saasProject, saasOAuth, marketplace, customMcp, triggerMaintenance } = root;
   // Token authentication must find every tenant's tokens: the hash is the
   // credential boundary, and the resolved grant then binds the request to the
   // token's tenant. Admin token management keeps the default local scope.
@@ -305,19 +291,9 @@ export async function createConnectApp(options: ConnectAppOptions): Promise<Conn
     }),
     app: new ConnectServer({
       customMcp,
-      actionSearch: { get: () => catalog.getSearchIndex() },
       network,
       providerHttpDispatch: options.providerHttpDispatch,
-      catalog,
       publicOrigin: options.publicOrigin,
-      providerLoader,
-      connections,
-      oauthClientConfigs,
-      oauthFlow,
-      actions,
-      triggers,
-      triggerMaintenance,
-      idempotency: options.runtimeDatabase.idempotencyStore,
       transitFiles: options.transitFiles,
       uploadTransitFile: options.uploadTransitFile,
       runtimeTokens,
@@ -343,16 +319,12 @@ export async function createConnectApp(options: ConnectAppOptions): Promise<Conn
       // unique so lookups intentionally span tenants. Tenant-scoped writes
       // resolve `runtimeDatabase.forTenant(record.tenantId)` per record.
       oauthClients: instanceDatabase.oauthClientStore,
-      oauthCodes: instanceDatabase.oauthCodeStore,
-      oauthTokens: instanceDatabase.oauthTokenStore,
       oauthKeys: instanceDatabase.oauthSigningKeyStore,
-      runtimeTokenStore: instanceDatabase.runtimeTokenStore,
       runtimeDatabase: options.runtimeDatabase,
       services,
       actionPolicy: options.actionPolicy,
       logger: options.logger,
       marketplace,
-      saas,
       saasProject,
       saasOAuth,
       compressApiResponses: options.compressApiResponses,

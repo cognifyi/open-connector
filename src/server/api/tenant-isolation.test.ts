@@ -174,6 +174,8 @@ describe("tenant isolation (real service graph)", () => {
     // The header selector conflicts the same way.
     const matchingSelector = await call("/v1/actions?tenant=alpha", { token });
     expect(matchingSelector.status).toBe(200);
+    // Casing is normalized before the grant comparison — it names the same tenant.
+    expect((await call("/v1/actions?tenant=ALPHA", { token })).status).toBe(200);
     const headerOnly = await appRequest(app, "/v1/actions", token, { "x-connect-tenant": "beta" });
     expect(headerOnly.status).toBe(403);
   });

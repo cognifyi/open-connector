@@ -1,35 +1,20 @@
-import type { CatalogStore } from "../catalog-store.ts";
-import type { ConnectionService } from "../connection-service.ts";
-import type { ActionSearchIndexProvider } from "../core/action-search.ts";
 import type { ProviderHttpDispatchOptions } from "../core/provider-http-dispatch.ts";
 import type { ProviderNetworkPolicy } from "../core/provider-network-policy.ts";
 import type { RuntimeLogger, TransitFileUpload } from "../core/types.ts";
 import type { CustomMcpService } from "../custom-mcp/service.ts";
 import type { MarketplaceService } from "../marketplace/marketplace-service.ts";
-import type { OAuthClientConfigService } from "../oauth/oauth-client-config-service.ts";
-import type { OAuthFlowService } from "../oauth/oauth-flow-service.ts";
-import type { IProviderLoader } from "../providers/provider-loader.ts";
-import type { SaasExecutionService } from "../saas/saas-execution-service.ts";
 import type { SaasOAuthService } from "../saas/saas-oauth-service.ts";
 import type { SaasProjectService } from "../saas/saas-project-service.ts";
-import type { TriggerMaintenance } from "../triggers/maintenance.ts";
-import type { TriggerRunner } from "../triggers/trigger-runner.ts";
 import type { LocalAuthOptions } from "./api/auth.ts";
 import type { PolicySnapshotProvider } from "./api/policy-snapshot.ts";
 import type { RuntimeStatus } from "./api/runtime-api.ts";
 import type { ITransitFileService } from "./files/transit-file-store.ts";
 import type { McpOutputMode } from "./mcp-settings.ts";
 import type { OAuthServerSettings } from "./oauth/settings.ts";
-import type { IIdempotencyStore } from "./storage/idempotency-store.ts";
-import type {
-  IOAuthClientStore,
-  IOAuthCodeStore,
-  IOAuthTokenStore,
-  IOAuthSigningKeyStore,
-} from "./storage/oauth-as-stores.ts";
+import type { IOAuthClientStore, IOAuthSigningKeyStore } from "./storage/oauth-as-stores.ts";
 import type { RuntimeDatabase } from "./storage/runtime-database.ts";
 import type { IRuntimePolicyStore } from "./storage/runtime-policy-store.ts";
-import type { RuntimeTokenService, IRuntimeTokenStore } from "./storage/runtime-token-service.ts";
+import type { RuntimeTokenService } from "./storage/runtime-token-service.ts";
 import type { ScopedServices } from "./tenant-services.ts";
 
 import { Hono } from "hono";
@@ -42,7 +27,6 @@ import { withRuntimeExecution } from "../core/runtime-execution.ts";
 import { ProviderDispatchRequestError, toProviderExecutionError } from "../providers/provider-runtime.ts";
 import { SaasError } from "../saas/saas-client.ts";
 import { TenantError } from "../tenant/tenant-error.ts";
-import { ActionRunner } from "./actions/action-runner.ts";
 import { clearLocalAuthCookie, createLocalAuthMiddleware, readLocalAuthSession, readTenantId } from "./api/auth.ts";
 import { getResponseCachePolicy } from "./api/cache-policy.ts";
 import { createConnectionRoutes } from "./api/connection-routes.ts";
@@ -87,18 +71,9 @@ export interface IConnectServerOptions {
   customMcp?: CustomMcpService;
   network?: ProviderNetworkPolicy;
   providerHttpDispatch?: ProviderHttpDispatchOptions;
-  catalog: CatalogStore;
   /** Public origin of this runtime, used for the HTTP request examples in Action guides. */
   publicOrigin: string;
-  providerLoader: IProviderLoader;
-  connections: ConnectionService;
-  oauthClientConfigs: OAuthClientConfigService;
-  oauthFlow: OAuthFlowService;
   runtimeTokens: RuntimeTokenService;
-  actions: ActionRunner;
-  triggers?: TriggerRunner;
-  triggerMaintenance?: TriggerMaintenance;
-  idempotency: IIdempotencyStore;
   transitFiles: ITransitFileService;
   uploadTransitFile?: (request: Request) => Promise<TransitFileUpload>;
   auth?: LocalAuthOptions;
@@ -112,10 +87,7 @@ export interface IConnectServerOptions {
    */
   trustProxyHeaders?: boolean;
   oauthClients: IOAuthClientStore;
-  oauthCodes: IOAuthCodeStore;
-  oauthTokens: IOAuthTokenStore;
   oauthKeys: IOAuthSigningKeyStore;
-  runtimeTokenStore: IRuntimeTokenStore;
   /** Scoped-view factory; request handlers resolve tenant-bound stores through `forTenant`. */
   runtimeDatabase: RuntimeDatabase;
   /** Root (`local`) service bundle; `services.forTenant(tenantId)` yields the tenant-bound sibling graph. */
@@ -124,7 +96,6 @@ export interface IConnectServerOptions {
   eventVerifyToken?: string;
   actionPolicy?: ActionPolicyService;
   runtimePolicyStore: IRuntimePolicyStore;
-  actionSearch?: ActionSearchIndexProvider;
   registerStaticRoutes?: (app: Hono) => void;
   logger?: RuntimeLogger;
   compressApiResponses?: boolean;
@@ -136,7 +107,6 @@ export interface IConnectServerOptions {
   oauthResultOrigins?: readonly string[];
   marketplace?: MarketplaceService;
   saasProject?: SaasProjectService;
-  saas?: SaasExecutionService;
   saasOAuth?: SaasOAuthService;
 }
 

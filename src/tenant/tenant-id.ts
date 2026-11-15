@@ -22,8 +22,11 @@ export function isTenantId(value: string): boolean {
  * could double as a wildcard, a path segment, or a second scope.
  */
 export function requireTenantId(value: string): string {
-  if (!isTenantId(value)) {
+  // Normalize once at the boundary so `?tenant=ALPHA`, a JWT `org` claim, and
+  // the stored `tenant_id` column can never diverge by case or padding.
+  const normalized = value.trim().toLowerCase();
+  if (!isTenantId(normalized)) {
     throw new TenantError("invalid_tenant_id", `invalid tenant id: ${JSON.stringify(value)}`);
   }
-  return value;
+  return normalized;
 }

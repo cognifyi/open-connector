@@ -87,6 +87,7 @@ async function main(): Promise<void> {
       jwksUri: process.env.OOMOL_CONNECT_JWKS_URI,
       issuer: process.env.OOMOL_CONNECT_JWT_ISSUER,
       audience: process.env.OOMOL_CONNECT_JWT_AUDIENCE,
+      requireOrgClaim: process.env.OOMOL_CONNECT_JWT_REQUIRE_ORG === "true",
     },
     network: {
       allowPrivateNetwork: parsePrivateNetworkAccessFlag(process.env.OOMOL_CONNECT_ALLOW_PRIVATE_NETWORK),
