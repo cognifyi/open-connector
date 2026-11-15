@@ -54,7 +54,11 @@ export async function createRuntimeJwtVerifier(config: RuntimeJwtConfig): Promis
   return async (token) => {
     try {
       const { payload } = await jwtVerify(token, jwks, { issuer, audience, requiredClaims: ["exp"] });
-      const sub = typeof payload.sub === "string" && payload.sub.trim() ? payload.sub : "anonymous";
+      // tokenId feeds the `service:<tokenId>` owner grammar — collapse any
+      // character outside it so an exotic `sub` cannot produce an invalid
+      // subject downstream.
+      const rawSub = typeof payload.sub === "string" ? payload.sub : "";
+      const sub = rawSub.replace(/[^a-zA-Z0-9._~@-]/g, "-") || "anonymous";
       return {
         tokenId: `jwt:${sub}`,
         tenantId: readTenantClaim(payload),
