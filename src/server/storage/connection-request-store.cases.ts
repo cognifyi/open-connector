@@ -38,6 +38,16 @@ export function connectionRequestStoreTests(getDatabase: () => RuntimeDatabase):
       expect(claims.find(Boolean)).toEqual(request);
     });
 
+    it("reads legacy local-admin rows through the service:admin subject", async () => {
+      const { connectionRequestStore: requests } = getDatabase();
+      const request = { ...pending(), owner: "local-admin" };
+      await requests.create(request);
+      expect(await requests.get(request.connectionRequestId, "service:admin")).toMatchObject({
+        connectionRequestId: request.connectionRequestId,
+      });
+      expect(await requests.get(request.connectionRequestId, "service:other")).toBeUndefined();
+    });
+
     it("rolls back supersession when the new request cannot be saved", async () => {
       const { connectionRequestStore: requests } = getDatabase();
       const request = pending();

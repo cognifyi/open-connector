@@ -40,3 +40,12 @@ export function requireSubject(value: string): string {
   }
   return value;
 }
+
+/**
+ * Owner values a lookup for `subject` must also match. `service:admin` is the
+ * canonical form of the pre-OC-1 `local-admin` owner, so reads keyed by either
+ * must see the same rows; every other subject matches only itself.
+ */
+export function ownerAliases(subject: string): readonly string[] {
+  return subject === "service:admin" ? [subject, LEGACY_LOCAL_SUBJECT] : [subject];
+}

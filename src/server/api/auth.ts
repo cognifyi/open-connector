@@ -422,7 +422,9 @@ async function hasValidRuntimeToken(context: Context, options: LocalAuthOptions)
       runtimeGrants.set(context.req.raw, grant);
       return true;
     }
-    if (await (options.verifyRuntimeJwt?.(token) ?? false)) {
+    const jwtGrant = await options.verifyRuntimeJwt?.(token);
+    if (jwtGrant) {
+      runtimeGrants.set(context.req.raw, jwtGrant);
       return true;
     }
   }

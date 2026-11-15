@@ -5,6 +5,7 @@ import type { TenantScope } from "../../tenant/tenant-scope.ts";
 import type { ISecretCodec } from "../secrets/secret-codec-core.ts";
 import type { RuntimeRow } from "./runtime-sql.ts";
 
+import { ownerAliases } from "../../tenant/subject.ts";
 import { tenantForInsert, tenantPredicate } from "../../tenant/tenant-scope.ts";
 import { initializeRetirement, lockRetirement, retirementMatches } from "./connection-retirement.ts";
 import { queueSaasConnections, queueSaasRequests } from "./saas-project-store.ts";
@@ -71,6 +72,12 @@ export interface SaasCandidate {
 export type RequestTransaction = (statements: RequestStatement[]) => Promise<RuntimeRow[][]>;
 
 /** Shared SQL lifecycle for SQLite, PostgreSQL and D1. Secrets use the runtime's codec. */
+/** `owner in (…)` clause for a subject, widening `service:admin` to the legacy `local-admin` owner. */
+function ownerIn(owner: string): { sql: string; values: readonly string[] } {
+  const aliases = ownerAliases(owner);
+  return { sql: `owner in (${aliases.map(() => "?").join(", ")})`, values: aliases };
+}
+
 export class ConnectionRequestStore {
   private readonly transaction: RequestTransaction;
   private readonly secretCodec: ISecretCodec;
@@ -113,11 +120,12 @@ export class ConnectionRequestStore {
   async get(id: string, owner: string): Promise<ConnectionRequest | undefined> {
     const t = tenantPredicate(this.scope);
     const now = Date.now();
+    const o = ownerIn(owner);
     const [[row]] = await this.transaction([
       {
         sql: `select id, service, status, app_id, error_code, error_message, expires_at, created_at, updated_at from connection_requests
-          where id = ? and owner = ? and expires_at > ? and ${t.sql}`,
-        values: [id, owner, new Date(now - 86_400_000).toISOString(), ...t.values],
+          where id = ? and ${o.sql} and expires_at > ? and ${t.sql}`,
+        values: [id, ...o.values, new Date(now - 86_400_000).toISOString(), ...t.values],
       },
     ]);
     if (!row) return undefined;
@@ -239,9 +247,10 @@ export class ConnectionRequestStore {
   ): RequestStatement[] {
     const t = tenantPredicate(this.scope);
     const expired = `expires_at <= ? and ${fence.sql}`;
-    const superseded = `owner = ? and service = ? and phase = 'pending' and ${fence.sql}`;
+    const o = ownerIn(owner);
+    const superseded = `${o.sql} and service = ? and phase = 'pending' and ${fence.sql}`;
     const expiredValues = [new Date(now - 86_400_000).toISOString(), ...fence.values];
-    const supersededValues = [owner, service, ...fence.values];
+    const supersededValues = [...o.values, service, ...fence.values];
     return [
       queueSaasRequests(this.scope, expired, expiredValues),
       queueSaasRequests(this.scope, superseded, supersededValues),
@@ -302,18 +311,19 @@ export class ConnectionRequestStore {
 
   async claimSaas(id: string, owner: string, now: number = Date.now()): Promise<SaasRequestLease | undefined> {
     const t = tenantPredicate(this.scope);
+    const o = ownerIn(owner);
     const leaseId = crypto.randomUUID();
     const [[row]] = await this.transaction([
       {
         sql: `update connection_requests set lease_id = ?, lease_until = ?, updated_at = ?
-        where id = ? and owner = ? and kind = 'saas' and phase = 'pending' and expires_at > ?
+        where id = ? and ${o.sql} and kind = 'saas' and phase = 'pending' and expires_at > ?
         and next_poll_at <= ? and (lease_until is null or lease_until <= ?) and ${t.sql} returning *`,
         values: [
           leaseId,
           now + 45_000,
           now,
           id,
-          owner,
+          ...o.values,
           new Date(now - 86_400_000).toISOString(),
           now,
           now,
@@ -421,10 +431,11 @@ export class ConnectionRequestStore {
 
   async getSaasReturnUri(id: string, owner: string): Promise<string | undefined> {
     const t = tenantPredicate(this.scope);
+    const o = ownerIn(owner);
     const [[row]] = await this.transaction([
       {
-        sql: `select return_uri from connection_requests where id = ? and owner = ? and kind = 'saas' and phase = 'completed' and expires_at > ? and ${t.sql}`,
-        values: [id, owner, new Date(Date.now() - 86_400_000).toISOString(), ...t.values],
+        sql: `select return_uri from connection_requests where id = ? and ${o.sql} and kind = 'saas' and phase = 'completed' and expires_at > ? and ${t.sql}`,
+        values: [id, ...o.values, new Date(Date.now() - 86_400_000).toISOString(), ...t.values],
       },
     ]);
     return row?.return_uri ? this.secretCodec.decode(row.return_uri as string) : undefined;
@@ -432,13 +443,14 @@ export class ConnectionRequestStore {
 
   async cancelSaas(id: string, owner: string): Promise<void> {
     const t = tenantPredicate(this.scope);
+    const o = ownerIn(owner);
     await this.transaction([
-      queueSaasRequests(this.scope, "id = ? and owner = ?", [id, owner]),
+      queueSaasRequests(this.scope, `id = ? and ${o.sql}`, [id, ...o.values]),
       {
         sql: `update connection_requests set phase = 'completed', status = 'failed', error_code = 'request_cancelled',
           value = null, candidate_value = null, lease_id = null, lease_until = null, updated_at = ?
-          where id = ? and owner = ? and kind = 'saas' and phase <> 'completed' and ${t.sql}`,
-        values: [Date.now(), id, owner, ...t.values],
+          where id = ? and ${o.sql} and kind = 'saas' and phase <> 'completed' and ${t.sql}`,
+        values: [Date.now(), id, ...o.values, ...t.values],
       },
     ]);
   }

@@ -14,6 +14,9 @@ still apply cleanly or be recorded as dropped/upstreamed.
 | `src/server/api/auth.ts` + `connect-app.ts`                                 | `readTenantId`/`readSubject` request resolution; instance-wide token auth; `services.forTenant` scoped graph | active | —                             |
 | `src/server/tenant-services.ts` + all request routes                        | Per-request `ScopedServices` bundle; every endpoint family resolved through `forTenant(readTenantId)`        | active | —                             |
 | `src/server/api/tenant-isolation.test.ts` + storage `tenant-scope.cases.ts` | Cross-tenant isolation suite: endpoint-level negative/positive cases + per-backend store cases               | active | —                             |
+| `src/server/api/runtime-jwt.ts` + `auth.ts`                                 | Verified JWT resolves to a tenant-bound `RuntimeGrant` (org claim → `tenant_id`, `sub` → `jwt:<sub>`)        | active | —                             |
+| `src/tenant/` + `connection-request-store`                                  | `requireTenantId` normalizes trim/lowercase; `ownerAliases` widens `service:admin` reads to `local-admin`    | active | —                             |
+| `IConnectServerOptions`                                                     | Removed post-OC-1 dead service options (stores/services now reach handlers via `services`/`runtimeDatabase`) | active | —                             |
 
 Fork-planned work packages (land as rows when merged):
 

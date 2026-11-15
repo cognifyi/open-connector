@@ -250,21 +250,7 @@ export async function createConnectApp(options: ConnectAppOptions): Promise<Conn
       return view;
     },
   };
-  const {
-    catalog,
-    providerLoader,
-    saasProject,
-    saasOAuth,
-    saas,
-    marketplace,
-    oauthClientConfigs,
-    customMcp,
-    connections,
-    actions,
-    oauthFlow,
-    triggers,
-    triggerMaintenance,
-  } = root;
+  const { saasProject, saasOAuth, marketplace, customMcp, triggerMaintenance } = root;
   // Token authentication must find every tenant's tokens: the hash is the
   // credential boundary, and the resolved grant then binds the request to the
   // token's tenant. Admin token management keeps the default local scope.
@@ -305,19 +291,9 @@ export async function createConnectApp(options: ConnectAppOptions): Promise<Conn
     }),
     app: new ConnectServer({
       customMcp,
-      actionSearch: { get: () => catalog.getSearchIndex() },
       network,
       providerHttpDispatch: options.providerHttpDispatch,
-      catalog,
       publicOrigin: options.publicOrigin,
-      providerLoader,
-      connections,
-      oauthClientConfigs,
-      oauthFlow,
-      actions,
-      triggers,
-      triggerMaintenance,
-      idempotency: options.runtimeDatabase.idempotencyStore,
       transitFiles: options.transitFiles,
       uploadTransitFile: options.uploadTransitFile,
       runtimeTokens,
@@ -343,16 +319,12 @@ export async function createConnectApp(options: ConnectAppOptions): Promise<Conn
       // unique so lookups intentionally span tenants. Tenant-scoped writes
       // resolve `runtimeDatabase.forTenant(record.tenantId)` per record.
       oauthClients: instanceDatabase.oauthClientStore,
-      oauthCodes: instanceDatabase.oauthCodeStore,
-      oauthTokens: instanceDatabase.oauthTokenStore,
       oauthKeys: instanceDatabase.oauthSigningKeyStore,
-      runtimeTokenStore: instanceDatabase.runtimeTokenStore,
       runtimeDatabase: options.runtimeDatabase,
       services,
       actionPolicy: options.actionPolicy,
       logger: options.logger,
       marketplace,
-      saas,
       saasProject,
       saasOAuth,
       compressApiResponses: options.compressApiResponses,

@@ -1,3 +1,4 @@
+import type { RuntimeGrant } from "../storage/runtime-token-service.ts";
 import type { Server } from "node:http";
 
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
@@ -88,15 +89,32 @@ describe("createRuntimeJwtVerifier", () => {
     const verifier = await configuredVerifier();
     const token = await signToken();
 
-    await expect(verifier(token)).resolves.toBe(true);
+    await expect(verifier(token)).resolves.toMatchObject({ tenantId: "local" });
   });
 
   it("accepts an audience array containing the expected audience", async () => {
     const verifier = await configuredVerifier();
     const token = await signToken({ tokenAudience: ["https://other.example.com", audience] });
 
-    await expect(verifier(token)).resolves.toBe(true);
+    await expect(verifier(token)).resolves.toMatchObject({ tenantId: "local" });
   });
+
+  it.each([
+    ["org_id", { org_id: "alpha" }, "alpha"],
+    ["tenant", { tenant: "beta" }, "beta"],
+    ["normalized casing", { org_id: " Alpha-Team " }, "alpha-team"],
+  ])("binds the tenant from the %s claim", async (_name, claims, tenantId) => {
+    const verifier = await configuredVerifier();
+    await expect(verifier(await signToken({ claims }))).resolves.toMatchObject({ tokenId: "jwt:caller", tenantId });
+  });
+
+  it.each([{ org_id: "not a tenant" }, { org_id: 42 }, { tenant: "all" }])(
+    "fails closed on an unusable org claim %j",
+    async (claims) => {
+      const verifier = await configuredVerifier();
+      await expect(verifier(await signToken({ claims }))).resolves.toBeUndefined();
+    },
+  );
 
   it.each([
     {
@@ -140,7 +158,7 @@ describe("createRuntimeJwtVerifier", () => {
       token: async () => await signToken({ notBefore: "1h" }),
     },
   ])("rejects $name", async ({ token }) => {
-    await expect((await configuredVerifier())(await token())).resolves.toBe(false);
+    await expect((await configuredVerifier())(await token())).resolves.toBeUndefined();
   });
 
   it("fails closed when the JWKS response is invalid", async () => {
@@ -153,11 +171,12 @@ describe("createRuntimeJwtVerifier", () => {
       throw new Error("JWT verifier was not configured.");
     }
 
-    await expect(verifier(await signToken())).resolves.toBe(false);
+    await expect(verifier(await signToken())).resolves.toBeUndefined();
   });
 });
 
 interface SignTokenOptions {
+  claims?: Record<string, unknown>;
   key?: CryptoKey;
   kid?: string;
   tokenIssuer?: string | false;
@@ -167,7 +186,9 @@ interface SignTokenOptions {
 }
 
 async function signToken(options: SignTokenOptions = {}): Promise<string> {
-  let token = new SignJWT({ subject: "caller" }).setProtectedHeader({ alg: "RS256", kid: options.kid ?? keyId });
+  let token = new SignJWT(options.claims ?? {})
+    .setSubject("caller")
+    .setProtectedHeader({ alg: "RS256", kid: options.kid ?? keyId });
   if (options.tokenIssuer !== false) {
     token = token.setIssuer(options.tokenIssuer ?? issuer);
   }
@@ -183,7 +204,7 @@ async function signToken(options: SignTokenOptions = {}): Promise<string> {
   return await token.sign(options.key ?? privateKey);
 }
 
-async function configuredVerifier(): Promise<(token: string) => Promise<boolean>> {
+async function configuredVerifier(): Promise<(token: string) => Promise<RuntimeGrant | undefined>> {
   const verifier = await createRuntimeJwtVerifier({ jwksUri, issuer, audience });
   if (!verifier) {
     throw new Error("JWT verifier was not configured.");

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { formatSubject, isSubject, LEGACY_LOCAL_SUBJECT, parseSubject, requireSubject } from "./subject.ts";
+import {
+  formatSubject,
+  isSubject,
+  LEGACY_LOCAL_SUBJECT,
+  ownerAliases,
+  parseSubject,
+  requireSubject,
+} from "./subject.ts";
 import { TenantError } from "./tenant-error.ts";
 import { DEFAULT_TENANT_ID, isTenantId, requireTenantId } from "./tenant-id.ts";
 
@@ -9,6 +16,13 @@ describe("tenant id", () => {
       expect(isTenantId(id), id).toBe(true);
       expect(requireTenantId(id)).toBe(id);
     }
+  });
+
+  it("normalizes padding and casing at the boundary", () => {
+    expect(requireTenantId(" Alpha-Team ")).toBe("alpha-team");
+    expect(requireTenantId("Acme_Corp")).toBe("acme_corp");
+    expect(requireTenantId(" local ")).toBe(DEFAULT_TENANT_ID);
+    expect(isTenantId(" Alpha-Team ")).toBe(false);
   });
 
   it("rejects wildcards, separators, and empty values", () => {
@@ -49,5 +63,11 @@ describe("subject", () => {
   it("rejects the legacy single-tenant owner as new input", () => {
     expect(isSubject(LEGACY_LOCAL_SUBJECT)).toBe(false);
     expect(() => requireSubject(LEGACY_LOCAL_SUBJECT)).toThrow(TenantError);
+  });
+
+  it("widens service:admin lookups to the legacy local-admin owner", () => {
+    expect(ownerAliases("service:admin")).toEqual(["service:admin", LEGACY_LOCAL_SUBJECT]);
+    expect(ownerAliases("user:u-1")).toEqual(["user:u-1"]);
+    expect(ownerAliases(LEGACY_LOCAL_SUBJECT)).toEqual([LEGACY_LOCAL_SUBJECT]);
   });
 });
