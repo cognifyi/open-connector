@@ -63,8 +63,10 @@ export function readRuntimeGrant(context: Context): RuntimeGrant | undefined {
 
 /**
  * The tenant a request acts under. Runtime-token callers are bound to the
- * tenant stamped on their grant; admin credentials may select a tenant with
- * `?tenant=` or `x-connect-tenant`; anything else falls back to `local`.
+ * tenant stamped on their grant; an admin bearer may select a tenant with
+ * `?tenant=` or `x-connect-tenant` (the admin session cookie deliberately
+ * stays read-only, so cookie sessions cannot select); anything else falls
+ * back to `local`.
  */
 export function readTenantId(context: Context): string {
   const queryTenant = context.req.query("tenant");
@@ -283,11 +285,7 @@ async function requiresRuntimeAuthentication(options: LocalAuthOptions): Promise
 
 async function hasRequestToken(context: Context, token: string): Promise<boolean> {
   if (context.req.header("authorization") !== undefined) return matchesConfiguredToken(context, token);
-  const validCookie = await hasValidAuthCookie(context, token);
-  // The admin session cookie is minted only after an admin bearer login, so
-  // it grants the same elevation, including tenant selection.
-  if (validCookie) adminBearerRequests.add(context.req.raw);
-  return validCookie;
+  return await hasValidAuthCookie(context, token);
 }
 
 async function hasValidAuthCookie(context: Context, token: string): Promise<boolean> {

@@ -62,8 +62,8 @@ configs, provider preferences, and the `forInstance()` escape hatch.
   tenants (`forInstance()` hash lookup) and then binds the request to the
   tenant stamped at issuance (`src/server/storage/runtime-token-service.ts`).
 - `readTenantId(context)` (`src/server/api/auth.ts`) resolves the request
-  tenant: the bound grant's `tenantId` wins, admin bearer credentials may
-  select a tenant with `?tenant=` or `x-connect-tenant`, and everything else
+  tenant: the bound grant's `tenantId` wins, admin bearer credentials (not console
+  session cookies — cookie reads stay non-mutating) may select a tenant with `?tenant=` or `x-connect-tenant`, and everything else
   falls back to `local`. A grant that disagrees with an explicit selector
   gets `tenant_conflict` (403); a non-admin selector gets
   `tenant_forbidden`; invalid ids get `invalid_tenant_id` via
