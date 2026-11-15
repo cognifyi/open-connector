@@ -20,7 +20,7 @@ class PreparePerCallTokenStore extends SqliteRuntimeTokenStore {
 
   override async findByHash(tokenHash: string): Promise<RuntimeTokenRecord | undefined> {
     const row = this.connection
-      .prepare(`select ${runtimeTokenColumns} from runtime_tokens where token_hash = ?`)
+      .prepare(`select tenant_id, ${runtimeTokenColumns} from runtime_tokens where token_hash = ?`)
       .get(tokenHash);
     return row ? readRuntimeTokenRow(row) : undefined;
   }

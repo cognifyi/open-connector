@@ -67,7 +67,12 @@ export function readRuntimeGrant(context: Context): RuntimeGrant | undefined {
  * `?tenant=` or `x-connect-tenant`; anything else falls back to `local`.
  */
 export function readTenantId(context: Context): string {
-  const requested = context.req.query("tenant") ?? context.req.header("x-connect-tenant") ?? undefined;
+  const queryTenant = context.req.query("tenant");
+  const headerTenant = context.req.header("x-connect-tenant");
+  if (queryTenant !== undefined && headerTenant !== undefined && queryTenant !== headerTenant) {
+    throw new TenantError("tenant_conflict", "The ?tenant= query parameter and x-connect-tenant header disagree.", 403);
+  }
+  const requested = queryTenant ?? headerTenant ?? undefined;
   const grantTenant = runtimeGrants.get(context.req.raw)?.tenantId;
   if (grantTenant) {
     if (requested !== undefined && requested !== grantTenant) {
@@ -278,7 +283,11 @@ async function requiresRuntimeAuthentication(options: LocalAuthOptions): Promise
 
 async function hasRequestToken(context: Context, token: string): Promise<boolean> {
   if (context.req.header("authorization") !== undefined) return matchesConfiguredToken(context, token);
-  return await hasValidAuthCookie(context, token);
+  const validCookie = await hasValidAuthCookie(context, token);
+  // The admin session cookie is minted only after an admin bearer login, so
+  // it grants the same elevation, including tenant selection.
+  if (validCookie) adminBearerRequests.add(context.req.raw);
+  return validCookie;
 }
 
 async function hasValidAuthCookie(context: Context, token: string): Promise<boolean> {
@@ -377,6 +386,12 @@ async function hasValidRuntimeToken(context: Context, options: LocalAuthOptions)
   if (options.authMode !== "oauth") {
     const grant = await options.resolveRuntimeToken?.(token);
     if (grant) {
+      // Runtime stores are still bound to the local tenant until scoped
+      // views reach the execution boundary; reject rather than silently
+      // serving another tenant's data under this credential.
+      if (grant.tenantId !== DEFAULT_TENANT_ID) {
+        return false;
+      }
       runtimeGrants.set(context.req.raw, grant);
       return true;
     }
@@ -387,6 +402,9 @@ async function hasValidRuntimeToken(context: Context, options: LocalAuthOptions)
   if (options.authMode === "oauth" || options.authMode === "mixed") {
     const grant = await options.resolveOAuthToken?.(token);
     if (grant) {
+      if (grant.tenantId !== DEFAULT_TENANT_ID) {
+        return false;
+      }
       runtimeGrants.set(context.req.raw, grant);
       return true;
     }

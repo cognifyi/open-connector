@@ -355,7 +355,7 @@ it("closes anonymous administration when the first stored runtime token appears"
 describe("readTenantId", () => {
   const grant = {
     tokenId: "fixture",
-    tenantId: "tenant-a",
+    tenantId: "local",
     allowedActions: [],
     blockedActions: [],
     allowedProxies: [],
@@ -402,7 +402,22 @@ describe("readTenantId", () => {
   it("binds runtime-token callers to the grant tenant", async () => {
     const app = tenantApp();
     const response = await app.request("/v1/tenant", { headers: authorize("Bearer", "valid") });
-    expect(await response.json()).toEqual({ tenantId: "tenant-a" });
+    expect(await response.json()).toEqual({ tenantId: "local" });
+  });
+
+  it("rejects a grant bound to a non-local tenant until execution stores are scoped", async () => {
+    const app = new Hono();
+    app.use(
+      "*",
+      createLocalAuthMiddleware({
+        requireRuntimeAuth: true,
+        resolveRuntimeToken: async () => ({ ...grant, tenantId: "tenant-a" }),
+      }),
+    );
+    app.get("/v1/tenant", (context) => context.json({ tenantId: readTenantId(context) }));
+
+    const response = await app.request("/v1/tenant", { headers: authorize("Bearer", "valid") });
+    expect(response.status).toBe(401);
   });
 
   it("rejects a runtime-token caller selecting another tenant", async () => {

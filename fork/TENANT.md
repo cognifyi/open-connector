@@ -66,7 +66,7 @@ configs, provider preferences, and the `forInstance()` escape hatch.
   select a tenant with `?tenant=` or `x-connect-tenant`, and everything else
   falls back to `local`. A grant that disagrees with an explicit selector
   gets `tenant_conflict` (403); a non-admin selector gets
-  `tenant_forbidden`; invalid ids get `tenant_invalid` via
+  `tenant_forbidden`; invalid ids get `invalid_tenant_id` via
   `requireTenantId`. `TenantError` maps to `status`/`code` in
   `ConnectServer.onError`.
 - Admin routes resolve scoped stores per request through
