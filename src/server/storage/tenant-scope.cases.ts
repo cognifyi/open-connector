@@ -198,6 +198,28 @@ export function tenantScopeTests(getDatabase: () => RuntimeDatabase): void {
     expect(await beta.marketplaceStore.listProviderPreferences()).toHaveLength(0);
   });
 
+  it("lets two tenants store source applications under the same digest id", async () => {
+    const alpha = getDatabase().forTenant(ALPHA);
+    const beta = getDatabase().forTenant(BETA);
+    // applicationId is a content digest of caller input, so identical inputs across
+    // tenants collide: beta's save must not be swallowed by alpha's row.
+    const digestId = "digest-of-same-owner-and-app";
+    const application = { secrets: {}, state: {}, sources: {} } as Parameters<
+      RuntimeDatabase["triggerStore"]["saveSourceApplication"]
+    >[3];
+    await expect(alpha.triggerStore.saveSourceApplication("owner", digestId, null, application)).resolves.toBe(true);
+    await expect(beta.triggerStore.saveSourceApplication("owner", digestId, null, application)).resolves.toBe(true);
+
+    const alphaRow = await alpha.triggerStore.getSourceApplication("owner", digestId);
+    const betaRow = await beta.triggerStore.getSourceApplication("owner", digestId);
+    expect(alphaRow?.revision).toBe(1);
+    expect(betaRow?.revision).toBe(1);
+
+    await expect(beta.triggerStore.saveSourceApplication("owner", digestId, 1, application)).resolves.toBe(true);
+    expect((await beta.triggerStore.getSourceApplication("owner", digestId))?.revision).toBe(2);
+    expect((await alpha.triggerStore.getSourceApplication("owner", digestId))?.revision).toBe(1);
+  });
+
   it("keeps the instance scope cross-tenant for maintenance", async () => {
     const alpha = getDatabase().forTenant(ALPHA);
     const instance = getDatabase().forInstance();

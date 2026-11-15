@@ -48,7 +48,7 @@ export class SqlTriggerStore implements TriggerStore {
     const [[row]] = await this.transaction([
       revision === null
         ? {
-            sql: "insert into trigger_source_applications (tenant_id, id, owner, revision, value) values (?, ?, ?, 1, ?) on conflict (id) do nothing returning id",
+            sql: "insert into trigger_source_applications (tenant_id, id, owner, revision, value) values (?, ?, ?, 1, ?) on conflict (tenant_id, id) do nothing returning id",
             values: [tenantForInsert(this.scope), id, owner, value],
           }
         : {
