@@ -86,9 +86,18 @@ configs, provider preferences, and the `forInstance()` escape hatch.
   the tenant's `service:admin` principal (the renamed `local-admin` — the
   legacy value still reads in old rows but is no longer written). Admin
   bearers may act on behalf via `?subject=`/`x-connect-subject`.
+- The credential-free OAuth callback resolves its tenant from the pending
+  `oauth_states` row (`tenantOf`, instance-wide) and completes inside that
+  tenant's scoped bundle — a `?tenant=X` flow can finish end-to-end.
 - Runtime auth **fails closed** on grants whose `tenantId` is not `local`
   until the remaining runtime surfaces (`/v1/actions`, `/mcp`, triggers,
-  idempotency) consume scoped bundles.
+  idempotency) consume scoped bundles; minting non-`local` runtime tokens is
+  likewise rejected with `tenant_unsupported` until then.
+- JWT-authenticated callers and browser sessions share the `service:admin`
+  subject; only runtime-token (`service:<tokenId>`) and explicit
+  `?subject=` (admin bearer) requests carry distinct owners. Admin can read a
+  token-owned request only via `?subject=service:<tokenId>` — on-behalf
+  completion is the intended protocol.
 
 ## Invariants for later OC-1 tasks
 

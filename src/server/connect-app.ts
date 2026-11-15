@@ -28,7 +28,7 @@ import { SaasClient } from "../saas/saas-client.ts";
 import { SaasExecutionService } from "../saas/saas-execution-service.ts";
 import { SaasOAuthService } from "../saas/saas-oauth-service.ts";
 import { SaasProjectService } from "../saas/saas-project-service.ts";
-import { DEFAULT_TENANT_ID } from "../tenant/tenant-id.ts";
+import { DEFAULT_TENANT_ID, requireTenantId } from "../tenant/tenant-id.ts";
 import { TriggerMaintenance } from "../triggers/maintenance.ts";
 import { TriggerRunner } from "../triggers/trigger-runner.ts";
 import { ActionRunner } from "./actions/action-runner.ts";
@@ -90,6 +90,9 @@ export async function createConnectApp(options: ConnectAppOptions): Promise<Conn
   });
   const saasClient = new SaasClient();
   const allowedCustomOAuth = new Set(options.allowedCustomOAuth);
+  // Cross-tenant lookups (token auth, maintenance sweeps, oauth-state
+  // callback resolution) share the one intentionally unscoped view.
+  const instanceDatabase = options.runtimeDatabase.forInstance();
 
   // The request-facing service graph is a pure function of the runtime view:
   // forTenant produces a sibling bundle where every tenant-scoped store is
@@ -174,9 +177,9 @@ export async function createConnectApp(options: ConnectAppOptions): Promise<Conn
       tokens: database.runtimeTokenStore,
       // The background sweep services every tenant — instance scope; the API
       // surface (list/cancel/abandon) keeps the request-scoped stores.
-      maintenanceStore: options.runtimeDatabase.forInstance().triggerStore,
-      maintenanceTokens: options.runtimeDatabase.forInstance().runtimeTokenStore,
-      runtimePolicy: options.runtimeDatabase.runtimePolicyStore,
+      maintenanceStore: instanceDatabase.triggerStore,
+      maintenanceTokens: instanceDatabase.runtimeTokenStore,
+      runtimePolicy: instanceDatabase.runtimePolicyStore,
       deploymentPolicy: options.actionPolicy ?? new ExecutionPolicyService(),
       logger: options.logger,
     });
@@ -215,10 +218,20 @@ export async function createConnectApp(options: ConnectAppOptions): Promise<Conn
   const services: ScopedServices = {
     ...root,
     forTenant: (tenantId) => {
+      requireTenantId(tenantId);
       let view = scopedViews.get(tenantId);
       if (!view) {
         view = buildServices(options.runtimeDatabase.forTenant(tenantId));
+        // A failed build must not poison the cache: later requests retry.
+        view.catch(() => {
+          if (scopedViews.get(tenantId) === view) scopedViews.delete(tenantId);
+        });
         scopedViews.set(tenantId, view);
+        // Bound view retention; `local` is never evicted.
+        for (const [key] of scopedViews) {
+          if (scopedViews.size <= 128) break;
+          if (key !== DEFAULT_TENANT_ID) scopedViews.delete(key);
+        }
       }
       return view;
     },
@@ -241,7 +254,6 @@ export async function createConnectApp(options: ConnectAppOptions): Promise<Conn
   // Token authentication must find every tenant's tokens: the hash is the
   // credential boundary, and the resolved grant then binds the request to the
   // token's tenant. Admin token management keeps the default local scope.
-  const instanceDatabase = options.runtimeDatabase.forInstance();
   const runtimeTokens = new RuntimeTokenService(options.runtimeDatabase.runtimeTokenStore, options.logger);
   const authRuntimeTokens = new RuntimeTokenService(instanceDatabase.runtimeTokenStore, options.logger);
   const hasStoredRuntimeTokens = (): Promise<boolean> => instanceDatabase.runtimeTokenStore.hasAny();

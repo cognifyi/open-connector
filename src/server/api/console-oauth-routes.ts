@@ -1,5 +1,6 @@
 import type { RuntimeLogger } from "../../core/types.ts";
 import type { OAuthClientConfigInput } from "../../oauth/oauth-client-config-service.ts";
+import type { IOAuthStateStore } from "../../oauth/oauth-flow-service.ts";
 import type { SaasProjectService } from "../../saas/saas-project-service.ts";
 import type { ScopedServices } from "../tenant-services.ts";
 import type { Context } from "hono";
@@ -70,6 +71,8 @@ function readOptionalStringArray(body: Record<string, unknown>, fieldName: strin
 
 export interface ConsoleOAuthRoutesOptions {
   services: ScopedServices;
+  /** Instance-wide oauth_states lookup used only to resolve the callback's tenant. */
+  oauthStates: IOAuthStateStore;
   saasProject?: SaasProjectService;
   logger?: RuntimeLogger;
   oauthCloseDelaySeconds?: number;
@@ -81,6 +84,7 @@ export interface ConsoleOAuthRoutesOptions {
 /** Console connection management and OAuth client configuration / authorization routes. */
 export function createConsoleOAuthRoutes({
   services,
+  oauthStates,
   saasProject,
   logger,
   oauthCloseDelaySeconds,
@@ -89,6 +93,14 @@ export function createConsoleOAuthRoutes({
 }: ConsoleOAuthRoutesOptions): Hono {
   const app = new Hono();
   const scoped = (context: Context) => services.forTenant(readTenantId(context));
+  // The OAuth callback is credential-free: the pending state row is the
+  // unguessable handle, so its tenant is resolved instance-wide and the flow
+  // then runs inside that tenant's scoped bundle.
+  const scopedForState = async (context: Context) => {
+    const state = context.req.query("state");
+    const tenantId = state ? await oauthStates.tenantOf(state) : undefined;
+    return tenantId ? services.forTenant(tenantId) : scoped(context);
+  };
 
   const writeConnectionResult = async (
     context: Context,
@@ -232,9 +244,9 @@ export function createConsoleOAuthRoutes({
   });
 
   app.get("/api/oauth/configs", async (context) => {
-    const { oauthClientConfigs } = await scoped(context);
+    const { oauthClientConfigs, saasProject: scopedSaasProject } = await scoped(context);
     const configs = await oauthClientConfigs.listConfigs();
-    const sources = await saasProject?.listSources();
+    const sources = await (scopedSaasProject ?? saasProject)?.listSources();
     return context.json(
       configs.map((config) => ({
         ...config,
@@ -360,7 +372,7 @@ export function createConsoleOAuthRoutes({
   });
 
   app.get("/oauth/callback", async (context) => {
-    const { oauthFlow } = await scoped(context);
+    const { oauthFlow } = await scopedForState(context);
     const state = context.req.query("state");
     const code = context.req.query("code") || context.req.query("spapi_oauth_code");
     const logContext = {

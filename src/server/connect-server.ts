@@ -44,7 +44,7 @@ import { ProviderDispatchRequestError, toProviderExecutionError } from "../provi
 import { SaasError } from "../saas/saas-client.ts";
 import { TenantError } from "../tenant/tenant-error.ts";
 import { ActionRunner } from "./actions/action-runner.ts";
-import { clearLocalAuthCookie, createLocalAuthMiddleware, readLocalAuthSession } from "./api/auth.ts";
+import { clearLocalAuthCookie, createLocalAuthMiddleware, readLocalAuthSession, readTenantId } from "./api/auth.ts";
 import { getResponseCachePolicy } from "./api/cache-policy.ts";
 import { createConnectionRoutes } from "./api/connection-routes.ts";
 import { createConsoleCatalogRoutes } from "./api/console-catalog-routes.ts";
@@ -228,13 +228,17 @@ export class ConnectServer {
       app.use("/api/*", compress());
     }
     app.use("*", createLocalAuthMiddleware(auth));
-    const customMcp = this.options.customMcp;
-    if (customMcp) {
-      app.use("*", async (_context, next) => customMcp.catalog.withSnapshot(next));
+    if (this.options.customMcp) {
+      // Each view's catalog holds its own snapshot: resolve the request's
+      // tenant first so custom MCP writes always hit the scoped overlay.
+      app.use("*", async (context, next) => {
+        const scoped = await this.options.services.forTenant(readTenantId(context));
+        return scoped.catalog.withSnapshot(next);
+      });
       app.route(
         "/api/custom-mcp",
         createCustomMcpRoutes({
-          mcp: customMcp,
+          mcp: this.options.customMcp,
           connections: this.options.connections,
           publicOrigin: this.options.publicOrigin,
         }),
@@ -365,6 +369,7 @@ export class ConnectServer {
       "/",
       createConsoleOAuthRoutes({
         services: this.options.services,
+        oauthStates: this.options.runtimeDatabase.forInstance().oauthStateStore,
         saasProject: this.options.saasProject,
         logger: this.options.logger,
         oauthCloseDelaySeconds: this.options.oauthCloseDelaySeconds,
