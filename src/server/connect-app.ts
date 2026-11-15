@@ -37,6 +37,7 @@ import { ConnectServer } from "./connect-server.ts";
 import { protectedResourceChallenge } from "./oauth/as-metadata.ts";
 import { resolveOAuthServerConfig } from "./oauth/config.ts";
 import { resolveOAuthAccessToken } from "./oauth/token-endpoint.ts";
+import { ProxyRunner } from "./proxy/proxy-runner.ts";
 import { RuntimeTokenService } from "./storage/runtime-token-service.ts";
 
 export interface ConnectAppOptions {
@@ -179,9 +180,21 @@ export async function createConnectApp(options: ConnectAppOptions): Promise<Conn
       // surface (list/cancel/abandon) keeps the request-scoped stores.
       maintenanceStore: instanceDatabase.triggerStore,
       maintenanceTokens: instanceDatabase.runtimeTokenStore,
+      // The sweep walks every tenant; cleanup must resolve the candidate's
+      // own service graph or a non-local subscription can never be swept.
+      runnerFor: async (tenantId) => (await services.forTenant(tenantId)).triggers,
       runtimePolicy: instanceDatabase.runtimePolicyStore,
       deploymentPolicy: options.actionPolicy ?? new ExecutionPolicyService(),
       logger: options.logger,
+    });
+    const proxyRunner = new ProxyRunner({
+      network,
+      providerHttpDispatch: options.providerHttpDispatch,
+      catalog,
+      providerLoader,
+      connections,
+      logger: options.logger,
+      saas,
     });
     const oauthFlow = new OAuthFlowService({
       clientConfigs: oauthClientConfigs,
@@ -204,6 +217,7 @@ export async function createConnectApp(options: ConnectAppOptions): Promise<Conn
       customMcp,
       connections,
       actions,
+      proxyRunner,
       oauthFlow,
       triggers,
       triggerMaintenance,
@@ -324,11 +338,15 @@ export async function createConnectApp(options: ConnectAppOptions): Promise<Conn
       },
       oauth: options.oauth,
       trustProxyHeaders: options.trustProxyHeaders,
-      oauthClients: options.runtimeDatabase.oauthClientStore,
-      oauthCodes: options.runtimeDatabase.oauthCodeStore,
-      oauthTokens: options.runtimeDatabase.oauthTokenStore,
-      oauthKeys: options.runtimeDatabase.oauthSigningKeyStore,
-      runtimeTokenStore: options.runtimeDatabase.runtimeTokenStore,
+      // OAuth AS stores are mounted instance-wide: client registrations and
+      // signing keys are instance-global, and code/token hashes are globally
+      // unique so lookups intentionally span tenants. Tenant-scoped writes
+      // resolve `runtimeDatabase.forTenant(record.tenantId)` per record.
+      oauthClients: instanceDatabase.oauthClientStore,
+      oauthCodes: instanceDatabase.oauthCodeStore,
+      oauthTokens: instanceDatabase.oauthTokenStore,
+      oauthKeys: instanceDatabase.oauthSigningKeyStore,
+      runtimeTokenStore: instanceDatabase.runtimeTokenStore,
       runtimeDatabase: options.runtimeDatabase,
       services,
       actionPolicy: options.actionPolicy,

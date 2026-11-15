@@ -1044,6 +1044,7 @@ describe("SqliteRuntimeDatabase", () => {
       metadata: {},
     });
     const triggerRecord = {
+      tenantId: "local",
       id: "rotation-trigger",
       mode: "webhook" as const,
       tokenId: token.record.id,
@@ -1456,6 +1457,7 @@ describe("SqliteOAuthCodeStore", () => {
     try {
       const now = Date.now();
       const record = {
+        tenantId: "local",
         codeHash: "code-hash-1",
         clientId: "client-1",
         redirectUri: "https://chatgpt.com/oidc/callback",
@@ -1481,6 +1483,7 @@ describe("SqliteOAuthCodeStore", () => {
     try {
       const now = Date.now();
       await database.oauthCodeStore.add({
+        tenantId: "local",
         codeHash: "expired",
         clientId: "client-1",
         redirectUri: "https://chatgpt.com/oidc/callback",
@@ -1504,6 +1507,7 @@ describe("SqliteOAuthTokenStore", () => {
     try {
       const now = Date.now();
       const base = {
+        tenantId: "local",
         clientId: "client-1",
         runtimeTokenId: "grant-1",
         scope: "mcp:access",
@@ -1541,6 +1545,7 @@ describe("SqliteOAuthTokenStore", () => {
     try {
       const now = Date.now();
       const base = {
+        tenantId: "local",
         clientId: "client-1",
         runtimeTokenId: "grant-1",
         scope: "mcp:access offline_access",
@@ -1636,6 +1641,7 @@ describe("SqliteOAuthTokenStore", () => {
     try {
       const now = Date.now();
       await database.oauthTokenStore.add({
+        tenantId: "local",
         tokenHash: "gone",
         clientId: "client-1",
         runtimeTokenId: "grant-1",
@@ -1644,6 +1650,7 @@ describe("SqliteOAuthTokenStore", () => {
         expiresAt: now - 60_000,
       });
       await database.oauthTokenStore.add({
+        tenantId: "local",
         tokenHash: "kept",
         refreshTokenHash: "kept-refresh",
         clientId: "client-1",
@@ -1656,6 +1663,7 @@ describe("SqliteOAuthTokenStore", () => {
       // A consumed refresh token is swept on the same refreshExpiresAt
       // clock: once that passes it is cleaned up like any other row.
       await database.oauthTokenStore.add({
+        tenantId: "local",
         tokenHash: "consumed",
         refreshTokenHash: "consumed-refresh",
         clientId: "client-1",
