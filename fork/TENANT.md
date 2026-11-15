@@ -74,6 +74,21 @@ configs, provider preferences, and the `forInstance()` escape hatch.
   `/api/runtime-tokens` is the first consumer (`policy-routes.ts`); the
   `local` tenant keeps using the injected service so single-tenant wiring is
   unchanged.
+- The request-facing service graph is a pure function of the runtime view:
+  `services.forTenant(tenantId)` (`src/server/tenant-services.ts`,
+  `connect-app.ts`) returns a sibling bundle where every tenant-scoped
+  store is bound to that tenant. `local` resolves to the root bundle itself;
+  other tenants build lazily and cache. Connection routes
+  (`connection-routes.ts`, `console-oauth-routes.ts`,
+  `saas-oauth-routes.ts`) consume the bundle per request.
+- `readSubject(context)` stamps `connection_requests.owner`: runtime-token
+  callers own flows as `service:<tokenId>`; every other credential shares
+  the tenant's `service:admin` principal (the renamed `local-admin` — the
+  legacy value still reads in old rows but is no longer written). Admin
+  bearers may act on behalf via `?subject=`/`x-connect-subject`.
+- Runtime auth **fails closed** on grants whose `tenantId` is not `local`
+  until the remaining runtime surfaces (`/v1/actions`, `/mcp`, triggers,
+  idempotency) consume scoped bundles.
 
 ## Invariants for later OC-1 tasks
 

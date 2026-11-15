@@ -30,6 +30,7 @@ import type {
 import type { RuntimeDatabase } from "./storage/runtime-database.ts";
 import type { IRuntimePolicyStore } from "./storage/runtime-policy-store.ts";
 import type { RuntimeTokenService, IRuntimeTokenStore } from "./storage/runtime-token-service.ts";
+import type { ScopedServices } from "./tenant-services.ts";
 
 import { Hono } from "hono";
 import { compress } from "hono/compress";
@@ -119,6 +120,8 @@ export interface IConnectServerOptions {
   runtimeTokenStore: IRuntimeTokenStore;
   /** Scoped-view factory; request handlers resolve tenant-bound stores through `forTenant`. */
   runtimeDatabase: RuntimeDatabase;
+  /** Root (`local`) service bundle; `services.forTenant(tenantId)` yields the tenant-bound sibling graph. */
+  services: ScopedServices;
   /** Dedicated token for inbound provider event verification. */
   eventVerifyToken?: string;
   actionPolicy?: ActionPolicyService;
@@ -277,7 +280,7 @@ export class ConnectServer {
         getPolicySnapshot: this.getPolicySnapshot,
       }),
     );
-    app.route("/v1", createConnectionRoutes(this.options));
+    app.route("/v1", createConnectionRoutes({ services: this.options.services }));
 
     // Triggers and protocols
     app.route(
@@ -353,17 +356,15 @@ export class ConnectServer {
       app.route(
         "/",
         createSaasOAuthRoutes({
+          services: this.options.services,
           saasProject: saas,
-          saasOAuth: this.options.saasOAuth,
         }),
       );
     }
     app.route(
       "/",
       createConsoleOAuthRoutes({
-        connections: this.options.connections,
-        oauthFlow: this.options.oauthFlow,
-        oauthClientConfigs: this.options.oauthClientConfigs,
+        services: this.options.services,
         saasProject: this.options.saasProject,
         logger: this.options.logger,
         oauthCloseDelaySeconds: this.options.oauthCloseDelaySeconds,
