@@ -232,15 +232,15 @@ export async function createConnectApp(options: ConnectAppOptions): Promise<Conn
   const services: ScopedServices = {
     ...root,
     forTenant: (tenantId) => {
-      requireTenantId(tenantId);
-      let view = scopedViews.get(tenantId);
+      const normalizedTenantId = requireTenantId(tenantId);
+      let view = scopedViews.get(normalizedTenantId);
       if (!view) {
-        view = buildServices(options.runtimeDatabase.forTenant(tenantId));
+        view = buildServices(options.runtimeDatabase.forTenant(normalizedTenantId));
         // A failed build must not poison the cache: later requests retry.
         view.catch(() => {
-          if (scopedViews.get(tenantId) === view) scopedViews.delete(tenantId);
+          if (scopedViews.get(normalizedTenantId) === view) scopedViews.delete(normalizedTenantId);
         });
-        scopedViews.set(tenantId, view);
+        scopedViews.set(normalizedTenantId, view);
         // Bound view retention; `local` is never evicted.
         for (const [key] of scopedViews) {
           if (scopedViews.size <= 128) break;

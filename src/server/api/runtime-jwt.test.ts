@@ -105,7 +105,7 @@ describe("createRuntimeJwtVerifier", () => {
     ["normalized casing", { org_id: " Alpha-Team " }, "alpha-team"],
   ])("binds the tenant from the %s claim", async (_name, claims, tenantId) => {
     const verifier = await configuredVerifier();
-    await expect(verifier(await signToken({ claims }))).resolves.toMatchObject({ tokenId: "jwt:caller", tenantId });
+    await expect(verifier(await signToken({ claims }))).resolves.toMatchObject({ tokenId: "jwt-caller", tenantId });
   });
 
   it.each([{ org_id: "not a tenant" }, { org_id: 42 }, { tenant: "all" }])(
@@ -115,6 +115,23 @@ describe("createRuntimeJwtVerifier", () => {
       await expect(verifier(await signToken({ claims }))).resolves.toBeUndefined();
     },
   );
+
+  it("binds local without an org claim unless one is required", async () => {
+    const strict = await createRuntimeJwtVerifier({ jwksUri, issuer, audience, requireOrgClaim: true });
+    if (!strict) throw new Error("JWT verifier was not configured.");
+    await expect(strict(await signToken())).resolves.toBeUndefined();
+    await expect(strict(await signToken({ claims: { org_id: "alpha" } }))).resolves.toMatchObject({
+      tenantId: "alpha",
+    });
+  });
+
+  it("keeps exotic subs inside the subject grammar without collisions", async () => {
+    const verifier = await configuredVerifier();
+    const spaced = await verifier(await signToken({ claims: { sub: "a b/c~d" } }));
+    expect(spaced?.tokenId).toMatch(/^jwt-[a-zA-Z0-9._@-]{1,122}$/);
+    const other = await verifier(await signToken({ claims: { sub: "a-b-c-d" } }));
+    expect(spaced?.tokenId).not.toBe(other?.tokenId);
+  });
 
   it.each([
     {
@@ -187,7 +204,7 @@ interface SignTokenOptions {
 
 async function signToken(options: SignTokenOptions = {}): Promise<string> {
   let token = new SignJWT(options.claims ?? {})
-    .setSubject("caller")
+    .setSubject(String(options.claims?.sub ?? "caller"))
     .setProtectedHeader({ alg: "RS256", kid: options.kid ?? keyId });
   if (options.tokenIssuer !== false) {
     token = token.setIssuer(options.tokenIssuer ?? issuer);

@@ -6,6 +6,12 @@ export interface RuntimeJwtConfig {
   jwksUri?: string;
   issuer?: string;
   audience?: string;
+  /**
+   * Reject tokens that carry no org claim instead of binding `local`. Single-
+   * tenant deployments leave this off; shared multi-tenant deployments should
+   * set it so an unmapped token can never silently reach the `local` tenant.
+   */
+  requireOrgClaim?: boolean;
 }
 
 /**
@@ -54,17 +60,14 @@ export async function createRuntimeJwtVerifier(config: RuntimeJwtConfig): Promis
   return async (token) => {
     try {
       const { payload } = await jwtVerify(token, jwks, { issuer, audience, requiredClaims: ["exp"] });
-      // tokenId feeds the `service:<tokenId>` owner grammar — collapse any
-      // character outside it so an exotic `sub` cannot produce an invalid
-      // subject downstream.
-      const rawSub = typeof payload.sub === "string" ? payload.sub : "";
-      const sub = rawSub.replace(/[^a-zA-Z0-9._~@-]/g, "-") || "anonymous";
       return {
-        tokenId: `jwt:${sub}`,
-        tenantId: readTenantClaim(payload),
+        tokenId: jwtTokenId(payload.sub),
+        tenantId: readTenantClaim(payload, config.requireOrgClaim === true),
         allowedActions: [],
         blockedActions: [],
         allowedProxies: [],
+        allowedConnections: [],
+        allowedTriggers: [],
       };
     } catch {
       return undefined;
@@ -83,11 +86,28 @@ function isLoopbackHttpUrl(url: URL): boolean {
 /**
  * Reads the tenant binding from a verified JWT payload. Accepts the org claim
  * names the Hub/Keycloak side uses (`org_id`, `orgId`, `tenant`, `tenant_id`);
- * an invalid value rejects the token outright rather than falling back.
+ * an invalid value rejects the token outright rather than falling back. With
+ * `requireOrgClaim`, a token missing all four claims is rejected too.
  */
-function readTenantClaim(payload: Record<string, unknown>): string {
+function readTenantClaim(payload: Record<string, unknown>, requireOrgClaim: boolean): string {
   const raw = payload.org_id ?? payload.orgId ?? payload.tenant ?? payload.tenant_id;
-  if (raw === undefined || raw === null) return DEFAULT_TENANT_ID;
+  if (raw === undefined || raw === null) {
+    if (requireOrgClaim) throw new Error("JWT carries no org claim.");
+    return DEFAULT_TENANT_ID;
+  }
   if (typeof raw !== "string") throw new Error("JWT org claim must be a string.");
   return requireTenantId(raw);
+}
+
+/**
+ * Maps `sub` to a tokenId that stays inside the `service:<tokenId>` subject
+ * grammar (no `:`/`~`, ≤127 chars). Grammar-safe subs pass through readably;
+ * anything else is base64url-encoded so distinct subjects can never collide.
+ */
+function jwtTokenId(sub: unknown): string {
+  const raw = typeof sub === "string" && sub ? sub : "anonymous";
+  if (/^[a-zA-Z0-9][a-zA-Z0-9._@-]{0,122}$/.test(raw)) return `jwt-${raw}`;
+  const encoded = Buffer.from(raw, "utf8").toString("base64url");
+  if (encoded.length <= 122) return `jwt-${encoded}`;
+  return `jwt-${encoded.slice(0, 122)}`;
 }
