@@ -4,6 +4,8 @@ import type { Context, MiddlewareHandler } from "hono";
 
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { measureExecutionPhase } from "../../core/execution-timing.ts";
+import { TenantError } from "../../tenant/tenant-error.ts";
+import { DEFAULT_TENANT_ID, requireTenantId } from "../../tenant/tenant-id.ts";
 import { isChannelEventVerifyRequest } from "../event-verification/registry.ts";
 import { constantTimeEqual } from "./auth-utils.ts";
 import { isConsoleShellRequest } from "./console-paths.ts";
@@ -57,6 +59,33 @@ const runtimeGrants = new WeakMap<Request, RuntimeGrant>();
 
 export function readRuntimeGrant(context: Context): RuntimeGrant | undefined {
   return runtimeGrants.get(context.req.raw);
+}
+
+/**
+ * The tenant a request acts under. Runtime-token callers are bound to the
+ * tenant stamped on their grant; admin credentials may select a tenant with
+ * `?tenant=` or `x-connect-tenant`; anything else falls back to `local`.
+ */
+export function readTenantId(context: Context): string {
+  const requested = context.req.query("tenant") ?? context.req.header("x-connect-tenant") ?? undefined;
+  const grantTenant = runtimeGrants.get(context.req.raw)?.tenantId;
+  if (grantTenant) {
+    if (requested !== undefined && requested !== grantTenant) {
+      throw new TenantError(
+        "tenant_conflict",
+        `Request tenant "${requested}" does not match the tenant the credential is bound to.`,
+        403,
+      );
+    }
+    return grantTenant;
+  }
+  if (requested === undefined) {
+    return DEFAULT_TENANT_ID;
+  }
+  if (!hasAdminBearer(context)) {
+    throw new TenantError("tenant_forbidden", "Only admin credentials may select a tenant.", 403);
+  }
+  return requireTenantId(requested);
 }
 
 export function createLocalAuthMiddleware(options: LocalAuthOptions): MiddlewareHandler {

@@ -61,6 +61,7 @@ async function benchmark(filename: string, iterations: number, schema?: string):
       await reused.add({
         id: `token-${index}`,
         name: `Token ${index}`,
+        tenantId: "local",
         tokenHash: hashes[index],
         allowedActions: ["github.*"],
         blockedActions: ["github.delete_repository"],
