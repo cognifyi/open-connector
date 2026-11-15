@@ -221,9 +221,10 @@ export class SqliteRuntimeDatabase implements RuntimeDatabase {
       );
       const sourceSecrets = await Promise.all(
         this.database
-          .prepare("select id, value from trigger_source_applications")
+          .prepare("select tenant_id, id, value from trigger_source_applications")
           .all()
           .map(async (row) => ({
+            tenantId: readString(row, "tenant_id"),
             id: readString(row, "id"),
             value: await nextSecretCodec.encode(await this.secretCodec.decode(readString(row, "value"))),
           })),
@@ -270,8 +271,8 @@ export class SqliteRuntimeDatabase implements RuntimeDatabase {
         this.database.prepare("update trigger_subscriptions set value = ? where id = ?").run(record.value, record.id);
       for (const record of sourceSecrets)
         this.database
-          .prepare("update trigger_source_applications set value = ? where id = ?")
-          .run(record.value, record.id);
+          .prepare("update trigger_source_applications set value = ? where tenant_id = ? and id = ?")
+          .run(record.value, record.tenantId, record.id);
       writeRotatedConnectionSecrets(this.database, connections);
       writeRotatedServiceSecrets(this.database, "oauth_client_configs", oauthConfigs);
       writeRotatedStateSecrets(this.database, oauthStates);
@@ -307,6 +308,8 @@ export class SqliteRuntimeDatabase implements RuntimeDatabase {
       delete from connection_requests;
       delete from runtime_tokens;
       delete from runtime_policy;
+      delete from oauth_authorization_codes;
+      delete from oauth_tokens;
       delete from runs;
       delete from idempotency_records;
       delete from custom_mcp;

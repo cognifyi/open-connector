@@ -1129,6 +1129,41 @@ describe("SqliteRuntimeDatabase", () => {
     });
     withNewKey.close();
   });
+
+  it("rotates secrets for same-id rows in different tenants independently", async () => {
+    const databasePath = await createDatabasePath();
+    const database = new SqliteRuntimeDatabase(databasePath, {
+      secretCodec: new AesGcmSecretCodec("old-key"),
+    });
+    const digestId = "shared-digest-across-tenants";
+    const alpha = database.forTenant("tenant-alpha");
+    const beta = database.forTenant("tenant-beta");
+    await alpha.triggerStore.saveSourceApplication("owner", digestId, null, {
+      secrets: { marker: "alpha-secret" },
+      state: {},
+      sources: {},
+    });
+    await beta.triggerStore.saveSourceApplication("owner", digestId, null, {
+      secrets: { marker: "beta-secret" },
+      state: {},
+      sources: {},
+    });
+
+    await database.rotateSecretCodec(new AesGcmSecretCodec("new-key"));
+    database.close();
+
+    const rotated = new SqliteRuntimeDatabase(databasePath, {
+      secretCodec: new AesGcmSecretCodec("new-key"),
+    });
+    // Without tenant pairing in rotation, both rows would hold whichever value was written last.
+    await expect(
+      rotated.forTenant("tenant-alpha").triggerStore.getSourceApplication("owner", digestId),
+    ).resolves.toMatchObject({ application: { secrets: { marker: "alpha-secret" } } });
+    await expect(
+      rotated.forTenant("tenant-beta").triggerStore.getSourceApplication("owner", digestId),
+    ).resolves.toMatchObject({ application: { secrets: { marker: "beta-secret" } } });
+    rotated.close();
+  });
 });
 
 async function createDatabasePath(): Promise<string> {

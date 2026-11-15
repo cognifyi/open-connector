@@ -46,16 +46,6 @@ export function tenantWhere(scope: TenantScope, where: string, values: SqlParam[
   };
 }
 
-/** {@link tenantWhere} for numbered `$N` placeholders (postgres). */
-export function tenantWherePg(scope: TenantScope, where: string, values: SqlParam[]): FilteredClause {
-  if (scope === null) return { sql: where, values };
-  const placeholder = `tenant_id = $${values.length + 1}`;
-  return {
-    sql: where ? `${where} and ${placeholder}` : `where ${placeholder}`,
-    values: [...values, scope],
-  };
-}
-
 /** Bare `tenant_id = ?` predicate for embedding inside larger clause fragments. */
 export function tenantPredicate(scope: TenantScope): FilteredClause {
   return scope === null ? { sql: "1 = 1", values: [] } : { sql: "tenant_id = ?", values: [scope] };

@@ -65,6 +65,8 @@ export interface PostgresRuntimeDatabaseOptions {
   migrations?: MigrationSource;
   /** Tenant binding for this instance's stores; omitted binds the default tenant. */
   tenantScope?: TenantScope;
+  /** True only for pools created by open(); sibling views never close the shared pool. */
+  ownsPool?: boolean;
 }
 
 export class PostgresRuntimeDatabase implements RuntimeDatabase {
@@ -89,9 +91,11 @@ export class PostgresRuntimeDatabase implements RuntimeDatabase {
   private readonly secretCodec: ISecretCodec;
   private readonly scope: TenantScope;
   private readonly runLimit: number;
+  private readonly ownsPool: boolean;
 
   private constructor(pool: Pool, options: PostgresRuntimeDatabaseOptions) {
     this.pool = pool;
+    this.ownsPool = options.ownsPool === true;
     this.scope = options.tenantScope === undefined ? "local" : options.tenantScope;
     this.runLimit = options.runLimit ?? DEFAULT_RUN_LIMIT;
     this.secretCodec = options.secretCodec ?? new PlainTextSecretCodec();
@@ -178,7 +182,7 @@ export class PostgresRuntimeDatabase implements RuntimeDatabase {
 
     try {
       await assertPostgresSchemaReady(pool, options.migrations);
-      return new PostgresRuntimeDatabase(pool, options);
+      return new PostgresRuntimeDatabase(pool, { ...options, ownsPool: true });
     } catch (error) {
       await pool.end();
       throw error;
@@ -186,7 +190,9 @@ export class PostgresRuntimeDatabase implements RuntimeDatabase {
   }
 
   async close(): Promise<void> {
-    await this.pool.end();
+    if (this.ownsPool) {
+      await this.pool.end();
+    }
   }
 
   async resetRuntimeData(): Promise<void> {
@@ -205,6 +211,8 @@ export class PostgresRuntimeDatabase implements RuntimeDatabase {
         delete from connection_requests;
         delete from runtime_tokens;
         delete from runtime_policy;
+        delete from oauth_authorization_codes;
+        delete from oauth_tokens;
         delete from runs;
         delete from idempotency_records;
         delete from custom_mcp;

@@ -37,7 +37,8 @@ export class SqlOAuthStateStore implements IOAuthStateStore {
         sql: `insert into oauth_states (state, value, created_at, service, connection_name, tenant_id)
         select ?, ?, ?, ?, ?, ? where ${fence.sql}
         on conflict(state) do update set value = excluded.value, created_at = excluded.created_at,
-          service = excluded.service, connection_name = excluded.connection_name`,
+          service = excluded.service, connection_name = excluded.connection_name
+          where oauth_states.tenant_id = excluded.tenant_id`,
         values: [
           state.state,
           value,

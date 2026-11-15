@@ -152,6 +152,23 @@ export function tenantScopeTests(getDatabase: () => RuntimeDatabase): void {
     await expect(beta.oauthClientConfigStore.get("github")).resolves.toBeUndefined();
     await expect(alpha.oauthClientConfigStore.get("github")).resolves.toMatchObject({ clientId: "alpha-client" });
     expect((await beta.oauthClientConfigStore.list()).map((row) => row.service)).not.toContain("github");
+
+    const mcp = (service: string, displayName: string) => ({
+      service,
+      displayName,
+      endpoint: "https://mcp.example.com/mcp",
+      transport: "streamable_http" as const,
+      auth: { type: "none" as const },
+      enabled: true,
+      revision: crypto.randomUUID(),
+    });
+    // Same service id is allowed per tenant; the catalog stays isolated.
+    await alpha.customMcpStore.create(mcp("mcp-a", "Alpha Tools"));
+    await beta.customMcpStore.create(mcp("mcp-a", "Beta Tools"));
+    expect((await alpha.customMcpStore.list()).map((row) => row.displayName)).toEqual(["Alpha Tools"]);
+    expect((await beta.customMcpStore.list()).map((row) => row.displayName)).toEqual(["Beta Tools"]);
+    // name_key stays globally unique by design: beta may not reuse alpha's display name.
+    await expect(beta.customMcpStore.create(mcp("mcp-b", "alpha tools"))).rejects.toMatchObject({ status: 409 });
   });
 
   it("scopes OAuth authorization codes and tokens per tenant", async () => {
