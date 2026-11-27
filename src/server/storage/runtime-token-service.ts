@@ -11,6 +11,17 @@ export interface TokenAudience {
   onBehalfOf?: string;
 }
 
+/**
+ * Fail-closed expiry check: an absent `expiresAt` never expires (pre-OC-2
+ * rows), but a value that cannot be parsed is treated as expired rather than
+ * granting a permanent token.
+ */
+export function isTokenExpired(record: { expiresAt?: string }, now: number = Date.now()): boolean {
+  if (record.expiresAt === undefined) return false;
+  const instant = Date.parse(record.expiresAt);
+  return Number.isNaN(instant) || instant <= now;
+}
+
 export interface RuntimeTokenRecord {
   id: string;
   name: string;
@@ -96,6 +107,9 @@ export class RuntimeTokenService {
     },
     envelope: { expiresAt?: string; runId?: string; audience?: TokenAudience } = {},
   ): Promise<RuntimeTokenCreation> {
+    if (envelope.expiresAt !== undefined && Number.isNaN(Date.parse(envelope.expiresAt))) {
+      throw new Error("expiresAt must be an ISO-8601 instant string.");
+    }
     const token = `${tokenPrefix}${randomBytes(32).toString("base64url")}`;
     const now = new Date().toISOString();
     const record: RuntimeTokenRecord = {
@@ -140,7 +154,7 @@ export class RuntimeTokenService {
       return undefined;
     }
 
-    if (matched.expiresAt !== undefined && Date.parse(matched.expiresAt) <= Date.now()) {
+    if (isTokenExpired(matched)) {
       return undefined;
     }
 

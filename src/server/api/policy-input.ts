@@ -48,7 +48,11 @@ export function readTokenEnvelope(body: JsonRequestBody): {
 } {
   let expiresAt: string | undefined;
   if (body.expiresAt !== undefined) {
-    if (typeof body.expiresAt !== "string" || Number.isNaN(Date.parse(body.expiresAt))) {
+    if (
+      typeof body.expiresAt !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(body.expiresAt) ||
+      Number.isNaN(Date.parse(body.expiresAt))
+    ) {
       throw invalidInput("expiresAt must be an ISO-8601 instant string.");
     }
     expiresAt = new Date(body.expiresAt).toISOString();
@@ -73,7 +77,10 @@ export function readTokenEnvelope(body: JsonRequestBody): {
     if (typeof id !== "string" || id.length === 0 || id.length > 256) {
       throw invalidInput("audience.id must be a non-empty string up to 256 chars.");
     }
-    if (onBehalfOf !== undefined && (typeof onBehalfOf !== "string" || onBehalfOf.length > 256)) {
+    if (
+      onBehalfOf !== undefined &&
+      (typeof onBehalfOf !== "string" || onBehalfOf.length === 0 || onBehalfOf.length > 256)
+    ) {
       throw invalidInput("audience.onBehalfOf must be a string up to 256 chars.");
     }
     audience = { type: type as TokenAudience["type"], id, ...(onBehalfOf === undefined ? {} : { onBehalfOf }) };
