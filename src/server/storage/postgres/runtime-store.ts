@@ -467,7 +467,7 @@ class PostgresRuntimeTokenStore implements IRuntimeTokenStore {
         insert into runtime_tokens (
           tenant_id, ${runtimeTokenColumns}
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       `,
       [
         tenantForInsert(this.scope),
@@ -481,6 +481,9 @@ class PostgresRuntimeTokenStore implements IRuntimeTokenStore {
         JSON.stringify(record.allowedTriggers ?? []),
         record.createdAt,
         record.lastUsedAt ?? null,
+        record.expiresAt ?? null,
+        record.runId ?? null,
+        record.audience === undefined ? null : JSON.stringify(record.audience),
       ],
     );
   }

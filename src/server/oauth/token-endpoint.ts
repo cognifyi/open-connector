@@ -11,6 +11,7 @@ import type { RuntimeGrant, IRuntimeTokenStore } from "../storage/runtime-token-
 import type { OAuthServerConfig } from "./config.ts";
 
 import { constantTimeEqual } from "../api/auth-utils.ts";
+import { isTokenExpired } from "../storage/runtime-token-service.ts";
 import { offlineAccessScope } from "./config.ts";
 import { hashToken, randomToken, signAccessToken, verifyAccessToken } from "./jwks.ts";
 import { verifyPkceS256 } from "./pkce.ts";
@@ -446,7 +447,7 @@ export async function resolveOAuthAccessToken(
     return undefined;
   }
   const backing = await deps.runtimeTokenStore.findById(record.runtimeTokenId);
-  if (!backing) {
+  if (!backing || isTokenExpired(backing)) {
     return undefined;
   }
   return {
@@ -457,5 +458,8 @@ export async function resolveOAuthAccessToken(
     allowedProxies: backing.allowedProxies,
     allowedConnections: backing.allowedConnections ?? [],
     allowedTriggers: backing.allowedTriggers ?? [],
+    expiresAt: backing.expiresAt,
+    runId: backing.runId,
+    audience: backing.audience,
   };
 }

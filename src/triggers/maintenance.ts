@@ -8,6 +8,7 @@ import type { TriggerRunner } from "./trigger-runner.ts";
 
 import { ExecutionError } from "../core/execution-error.ts";
 import { withRuntimeExecution } from "../core/runtime-execution.ts";
+import { isTokenExpired } from "../server/storage/runtime-token-service.ts";
 import { withSubscription } from "./subscriptions.ts";
 
 export interface TriggerSubscriptionSummary {
@@ -134,7 +135,10 @@ export class TriggerMaintenance {
       try {
         await withSubscription(maintenanceStore, candidate.id, signal, async (record, save) => {
           if (record.status === "deleted" || record.status === "abandoned") return;
-          const token = (await maintenanceTokens.list()).find((token) => token.id === record.tokenId);
+          const stored = (await maintenanceTokens.list()).find((token) => token.id === record.tokenId);
+          // An expired grant tears down its subscriptions like a missing one:
+          // bearer checks reject it, so the subscription must not outlive it.
+          const token = stored && !isTokenExpired(stored) ? stored : undefined;
           const runtime = await this.options.runtimePolicy.get();
           const policy = this.options.deploymentPolicy.createSnapshot(runtime?.rules, token, runtime?.updatedAt);
           if (

@@ -96,6 +96,7 @@ describe("SqliteRuntimeDatabase", () => {
       "0023_tenant.sql",
       "0024_trigger_source_tenant_pk.sql",
       "0025_normalize_tenant_ids.sql",
+      "0026_grant_envelope.sql",
     ];
     expect(entries.filter((entry) => entry.message === "sqlite migration started")).toEqual(
       migrations.map((migration) => ({ fields: { migration }, message: "sqlite migration started" })),

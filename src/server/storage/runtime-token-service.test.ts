@@ -2,7 +2,7 @@ import type { TokenPolicy } from "../../core/action-policy.ts";
 import type { IRuntimeTokenStore, RuntimeTokenRecord } from "./runtime-token-service.ts";
 
 import { describe, expect, it, vi } from "vitest";
-import { hashRuntimeToken, RuntimeTokenService } from "./runtime-token-service.ts";
+import { hashRuntimeToken, isTokenExpired, RuntimeTokenService } from "./runtime-token-service.ts";
 
 describe("RuntimeTokenService", () => {
   it("rejects non-runtime-token values without reading the store", async () => {
@@ -131,6 +131,58 @@ describe("RuntimeTokenService", () => {
     await expect(service.resolveToken(created.token)).resolves.toMatchObject({
       allowedConnections: ["example:work"],
     });
+  });
+
+  it("round-trips the grant envelope and rejects expired tokens at resolve", async () => {
+    const service = new RuntimeTokenService(new MemoryRuntimeTokenStore());
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    const created = await service.createToken(
+      "Run-scoped",
+      { allowedActions: [], blockedActions: [], allowedProxies: [], allowedConnections: [] },
+      { expiresAt, runId: "run_abc123", audience: { type: "run", id: "run_abc123", onBehalfOf: "user:u-1" } },
+    );
+
+    expect(created.record).toMatchObject({
+      expiresAt,
+      runId: "run_abc123",
+      audience: { type: "run", id: "run_abc123", onBehalfOf: "user:u-1" },
+    });
+    await expect(service.resolveToken(created.token)).resolves.toMatchObject({
+      expiresAt,
+      runId: "run_abc123",
+      audience: { type: "run", id: "run_abc123" },
+    });
+
+    const expired = await service.createToken(
+      "Already dead",
+      { allowedActions: [], blockedActions: [], allowedProxies: [], allowedConnections: [] },
+      { expiresAt: new Date(Date.now() - 1).toISOString() },
+    );
+    await expect(service.resolveToken(expired.token)).resolves.toBeUndefined();
+    await expect(service.verifyToken(expired.token)).resolves.toBe(false);
+    // The record stays listed until the sweeper collects it (OC-2b).
+    await expect(service.listTokens()).resolves.toHaveLength(2);
+  });
+
+  it("fails closed on an unparseable expires_at instead of granting a permanent token", async () => {
+    const store = new MemoryRuntimeTokenStore();
+    await store.add({
+      id: "corrupt",
+      name: "corrupt",
+      tenantId: "local",
+      tokenHash: "deadbeef",
+      allowedActions: [],
+      blockedActions: [],
+      allowedProxies: [],
+      allowedConnections: [],
+      createdAt: new Date().toISOString(),
+      expiresAt: "not-a-date",
+    });
+    expect(isTokenExpired({ expiresAt: "not-a-date" })).toBe(true);
+    expect(isTokenExpired({})).toBe(false);
+    await expect(
+      new RuntimeTokenService(new MemoryRuntimeTokenStore()).createToken("x", undefined, { expiresAt: "junk" }),
+    ).rejects.toThrow("expiresAt");
   });
 
   it("defaults omitted allowedConnections to an unrestricted empty list", async () => {

@@ -4,6 +4,24 @@ import type { RuntimeLogger } from "../../core/types.ts";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { DEFAULT_TENANT_ID } from "../../tenant/tenant-id.ts";
 
+/** C16 grant audience: which kind of principal the token acts for. */
+export interface TokenAudience {
+  type: "agent" | "run" | "service" | "session";
+  id: string;
+  onBehalfOf?: string;
+}
+
+/**
+ * Fail-closed expiry check: an absent `expiresAt` never expires (pre-OC-2
+ * rows), but a value that cannot be parsed is treated as expired rather than
+ * granting a permanent token.
+ */
+export function isTokenExpired(record: { expiresAt?: string }, now: number = Date.now()): boolean {
+  if (record.expiresAt === undefined) return false;
+  const instant = Date.parse(record.expiresAt);
+  return Number.isNaN(instant) || instant <= now;
+}
+
 export interface RuntimeTokenRecord {
   id: string;
   name: string;
@@ -17,6 +35,12 @@ export interface RuntimeTokenRecord {
   allowedTriggers?: string[];
   createdAt: string;
   lastUsedAt?: string;
+  /** ISO instant after which `resolveToken` rejects the token; absent = no expiry (pre-OC-2 rows). */
+  expiresAt?: string;
+  /** Omni run the grant is bound to; audit join key. */
+  runId?: string;
+  /** C16 audience descriptor for the grant. */
+  audience?: TokenAudience;
 }
 
 export interface RuntimeTokenSummary {
@@ -30,6 +54,9 @@ export interface RuntimeTokenSummary {
   allowedTriggers?: string[];
   createdAt: string;
   lastUsedAt?: string;
+  expiresAt?: string;
+  runId?: string;
+  audience?: TokenAudience;
 }
 
 export interface RuntimeTokenCreation {
@@ -54,6 +81,9 @@ export interface RuntimeGrant extends TokenPolicy {
   tokenId: string;
   /** Tenant the grant is bound to; every runtime store lookup must run under `forTenant(grant.tenantId)`. */
   tenantId: string;
+  expiresAt?: string;
+  runId?: string;
+  audience?: TokenAudience;
 }
 
 export class RuntimeTokenService {
@@ -75,7 +105,11 @@ export class RuntimeTokenService {
       allowedProxies: [],
       allowedConnections: [],
     },
+    envelope: { expiresAt?: string; runId?: string; audience?: TokenAudience } = {},
   ): Promise<RuntimeTokenCreation> {
+    if (envelope.expiresAt !== undefined && Number.isNaN(Date.parse(envelope.expiresAt))) {
+      throw new Error("expiresAt must be an ISO-8601 instant string.");
+    }
     const token = `${tokenPrefix}${randomBytes(32).toString("base64url")}`;
     const now = new Date().toISOString();
     const record: RuntimeTokenRecord = {
@@ -89,6 +123,9 @@ export class RuntimeTokenService {
       allowedConnections: policy.allowedConnections ?? [],
       allowedTriggers: policy.allowedTriggers ?? [],
       createdAt: now,
+      expiresAt: envelope.expiresAt,
+      runId: envelope.runId,
+      audience: envelope.audience,
     };
     await this.store.add(record);
     return { token, record };
@@ -117,6 +154,10 @@ export class RuntimeTokenService {
       return undefined;
     }
 
+    if (isTokenExpired(matched)) {
+      return undefined;
+    }
+
     await this.recordLastUsed(matched.id);
     return {
       tokenId: matched.id,
@@ -126,6 +167,9 @@ export class RuntimeTokenService {
       allowedProxies: matched.allowedProxies,
       allowedConnections: matched.allowedConnections ?? [],
       allowedTriggers: matched.allowedTriggers ?? [],
+      expiresAt: matched.expiresAt,
+      runId: matched.runId,
+      audience: matched.audience,
     };
   }
 
@@ -162,6 +206,9 @@ export function summarizeRuntimeToken(record: RuntimeTokenRecord): RuntimeTokenS
     allowedTriggers: record.allowedTriggers ?? [],
     createdAt: record.createdAt,
     lastUsedAt: record.lastUsedAt,
+    expiresAt: record.expiresAt,
+    runId: record.runId,
+    audience: record.audience,
   };
 }
 

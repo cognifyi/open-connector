@@ -4,7 +4,7 @@ import type { TenantScope } from "../../tenant/tenant-scope.ts";
  */
 import type { RuntimePolicyRecord } from "./runtime-policy-store.ts";
 import type { RunLog, RunLogListInput, RunLogPage } from "./runtime-store.ts";
-import type { RuntimeTokenRecord } from "./runtime-token-service.ts";
+import type { RuntimeTokenRecord, TokenAudience } from "./runtime-token-service.ts";
 
 import { decodeRunLogCursor, encodeRunLogCursor } from "./runtime-store.ts";
 
@@ -13,7 +13,7 @@ export type RuntimeRow = Record<string, unknown>;
 
 /** The `runtime_tokens` columns every token query reads back, in the order `readRuntimeTokenRow` decodes. */
 export const runtimeTokenColumns =
-  "id, name, token_hash, allowed_actions, blocked_actions, allowed_proxies, allowed_connections, allowed_triggers, created_at, last_used_at";
+  "id, name, token_hash, allowed_actions, blocked_actions, allowed_proxies, allowed_connections, allowed_triggers, created_at, last_used_at, expires_at, run_id, audience_json";
 
 /** Read a column the query selected as a string, rejecting anything the schema cannot produce. */
 export function readString(row: RuntimeRow, key: string): string {
@@ -55,6 +55,9 @@ export function readRuntimeTokenRow(row: RuntimeRow): RuntimeTokenRecord {
     allowedTriggers: parseJson(readString(row, "allowed_triggers")),
     createdAt: readString(row, "created_at"),
     lastUsedAt: readOptionalString(row, "last_used_at"),
+    expiresAt: readOptionalString(row, "expires_at"),
+    runId: readOptionalString(row, "run_id"),
+    audience: parseJson<TokenAudience>(readOptionalString(row, "audience_json") ?? "null") ?? undefined,
   };
 }
 

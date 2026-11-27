@@ -4,19 +4,20 @@ Every divergence from `upstream/main` that is not itself an upstream PR gets a
 row here. This is the checklist for the quarterly rebase: each row must either
 still apply cleanly or be recorded as dropped/upstreamed.
 
-| Area                                                                        | Change                                                                                                       | Status | Upstream PR                   |
-| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ------ | ----------------------------- |
-| `.github/workflows/publish-ghcr.yml`                                        | New fork-only workflow; amd64 image to `ghcr.io/cognifyi/open-connector`                                     | active | — (publishing infra)          |
-| `fork/`                                                                     | This directory                                                                                               | active | —                             |
-| `migrations/0023+0024` (both dialects)                                      | `tenant_id` on all row-scoped tables + `subject`/`status`/`visibility` on connections + tenant-scoped PKs    | active | — (upstream is single-tenant) |
-| `src/tenant/`                                                               | Tenant-id/subject grammar and validation; `tenant-scope.ts` explicit scope predicates                        | active | —                             |
-| `src/server/storage/`                                                       | All tenant-scoped queries carry a `TenantScope`; `forTenant`/`forInstance` views on `RuntimeDatabase`        | active | —                             |
-| `src/server/api/auth.ts` + `connect-app.ts`                                 | `readTenantId`/`readSubject` request resolution; instance-wide token auth; `services.forTenant` scoped graph | active | —                             |
-| `src/server/tenant-services.ts` + all request routes                        | Per-request `ScopedServices` bundle; every endpoint family resolved through `forTenant(readTenantId)`        | active | —                             |
-| `src/server/api/tenant-isolation.test.ts` + storage `tenant-scope.cases.ts` | Cross-tenant isolation suite: endpoint-level negative/positive cases + per-backend store cases               | active | —                             |
-| `src/server/api/runtime-jwt.ts` + `auth.ts`                                 | Verified JWT resolves to a tenant-bound `RuntimeGrant` (org claim → `tenant_id`, `sub` → `jwt:<sub>`)        | active | —                             |
-| `src/tenant/` + `connection-request-store`                                  | `requireTenantId` normalizes trim/lowercase; `ownerAliases` widens `service:admin` reads to `local-admin`    | active | —                             |
-| `IConnectServerOptions`                                                     | Removed post-OC-1 dead service options (stores/services now reach handlers via `services`/`runtimeDatabase`) | active | —                             |
+| Area                                                                        | Change                                                                                                        | Status | Upstream PR                   |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------ | ----------------------------- |
+| `.github/workflows/publish-ghcr.yml`                                        | New fork-only workflow; amd64 image to `ghcr.io/cognifyi/open-connector`                                      | active | — (publishing infra)          |
+| `fork/`                                                                     | This directory                                                                                                | active | —                             |
+| `migrations/0023+0024` (both dialects)                                      | `tenant_id` on all row-scoped tables + `subject`/`status`/`visibility` on connections + tenant-scoped PKs     | active | — (upstream is single-tenant) |
+| `src/tenant/`                                                               | Tenant-id/subject grammar and validation; `tenant-scope.ts` explicit scope predicates                         | active | —                             |
+| `src/server/storage/`                                                       | All tenant-scoped queries carry a `TenantScope`; `forTenant`/`forInstance` views on `RuntimeDatabase`         | active | —                             |
+| `src/server/api/auth.ts` + `connect-app.ts`                                 | `readTenantId`/`readSubject` request resolution; instance-wide token auth; `services.forTenant` scoped graph  | active | —                             |
+| `src/server/tenant-services.ts` + all request routes                        | Per-request `ScopedServices` bundle; every endpoint family resolved through `forTenant(readTenantId)`         | active | —                             |
+| `src/server/api/tenant-isolation.test.ts` + storage `tenant-scope.cases.ts` | Cross-tenant isolation suite: endpoint-level negative/positive cases + per-backend store cases                | active | —                             |
+| `src/server/api/runtime-jwt.ts` + `auth.ts`                                 | Verified JWT resolves to a tenant-bound `RuntimeGrant` (org claim → `tenant_id`, `sub` → `jwt:<sub>`)         | active | —                             |
+| `src/tenant/` + `connection-request-store`                                  | `requireTenantId` normalizes trim/lowercase; `ownerAliases` widens `service:admin` reads to `local-admin`     | active | —                             |
+| `migrations/0026` + `runtime_tokens` grant envelope                         | `expires_at`/`run_id`/`audience_json` on tokens; `resolveToken` rejects expired; mint accepts envelope fields | active | — (token TTL is upstreamable) |
+| `IConnectServerOptions`                                                     | Removed post-OC-1 dead service options (stores/services now reach handlers via `services`/`runtimeDatabase`)  | active | —                             |
 
 Fork-planned work packages (land as rows when merged):
 
