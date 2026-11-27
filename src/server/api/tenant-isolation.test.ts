@@ -162,6 +162,41 @@ describe("tenant isolation (real service graph)", () => {
     await expect((await call("/api/runtime-tokens?tenant=alpha")).json()).resolves.toHaveLength(1);
   });
 
+  it("mints grant envelopes and rejects expired tokens at auth time", async () => {
+    const { call } = await setup();
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    const minted = await call("/api/runtime-tokens?tenant=alpha", {
+      body: {
+        name: "run-scoped",
+        ...TOKEN_POLICY,
+        expiresAt,
+        runId: "run_alpha1",
+        audience: { type: "run", id: "run_alpha1", onBehalfOf: "user:u-1" },
+      },
+    });
+    expect(minted.status).toBe(200);
+    const mintedBody = (await minted.json()) as { token: string; record: Record<string, unknown> };
+    expect(mintedBody.record).toMatchObject({
+      expiresAt,
+      runId: "run_alpha1",
+      audience: { type: "run", id: "run_alpha1", onBehalfOf: "user:u-1" },
+    });
+    expect((await call("/v1/actions", { token: mintedBody.token })).status).toBe(200);
+
+    // Invalid envelope fields are rejected at mint.
+    const bad = await call("/api/runtime-tokens?tenant=alpha", {
+      body: { name: "bad", ...TOKEN_POLICY, audience: { type: "robot", id: "x" } },
+    });
+    expect(bad.status).toBe(400);
+
+    // An already-expired token fails closed on the runtime path.
+    const dead = await call("/api/runtime-tokens?tenant=alpha", {
+      body: { name: "dead", ...TOKEN_POLICY, expiresAt: new Date(Date.now() - 1000).toISOString() },
+    });
+    const deadToken = ((await dead.json()) as { token: string }).token;
+    expect((await call("/v1/actions", { token: deadToken })).status).toBe(401);
+  });
+
   it("binds a tenant token to its tenant and rejects a mismatched selector", async () => {
     const { app, call, mint } = await setup();
     const token = await mint("alpha");

@@ -4,6 +4,13 @@ import type { RuntimeLogger } from "../../core/types.ts";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { DEFAULT_TENANT_ID } from "../../tenant/tenant-id.ts";
 
+/** C16 grant audience: which kind of principal the token acts for. */
+export interface TokenAudience {
+  type: "agent" | "run" | "service" | "session";
+  id: string;
+  onBehalfOf?: string;
+}
+
 export interface RuntimeTokenRecord {
   id: string;
   name: string;
@@ -17,6 +24,12 @@ export interface RuntimeTokenRecord {
   allowedTriggers?: string[];
   createdAt: string;
   lastUsedAt?: string;
+  /** ISO instant after which `resolveToken` rejects the token; absent = no expiry (pre-OC-2 rows). */
+  expiresAt?: string;
+  /** Omni run the grant is bound to; audit join key. */
+  runId?: string;
+  /** C16 audience descriptor for the grant. */
+  audience?: TokenAudience;
 }
 
 export interface RuntimeTokenSummary {
@@ -30,6 +43,9 @@ export interface RuntimeTokenSummary {
   allowedTriggers?: string[];
   createdAt: string;
   lastUsedAt?: string;
+  expiresAt?: string;
+  runId?: string;
+  audience?: TokenAudience;
 }
 
 export interface RuntimeTokenCreation {
@@ -54,6 +70,9 @@ export interface RuntimeGrant extends TokenPolicy {
   tokenId: string;
   /** Tenant the grant is bound to; every runtime store lookup must run under `forTenant(grant.tenantId)`. */
   tenantId: string;
+  expiresAt?: string;
+  runId?: string;
+  audience?: TokenAudience;
 }
 
 export class RuntimeTokenService {
@@ -75,6 +94,7 @@ export class RuntimeTokenService {
       allowedProxies: [],
       allowedConnections: [],
     },
+    envelope: { expiresAt?: string; runId?: string; audience?: TokenAudience } = {},
   ): Promise<RuntimeTokenCreation> {
     const token = `${tokenPrefix}${randomBytes(32).toString("base64url")}`;
     const now = new Date().toISOString();
@@ -89,6 +109,9 @@ export class RuntimeTokenService {
       allowedConnections: policy.allowedConnections ?? [],
       allowedTriggers: policy.allowedTriggers ?? [],
       createdAt: now,
+      expiresAt: envelope.expiresAt,
+      runId: envelope.runId,
+      audience: envelope.audience,
     };
     await this.store.add(record);
     return { token, record };
@@ -117,6 +140,10 @@ export class RuntimeTokenService {
       return undefined;
     }
 
+    if (matched.expiresAt !== undefined && Date.parse(matched.expiresAt) <= Date.now()) {
+      return undefined;
+    }
+
     await this.recordLastUsed(matched.id);
     return {
       tokenId: matched.id,
@@ -126,6 +153,9 @@ export class RuntimeTokenService {
       allowedProxies: matched.allowedProxies,
       allowedConnections: matched.allowedConnections ?? [],
       allowedTriggers: matched.allowedTriggers ?? [],
+      expiresAt: matched.expiresAt,
+      runId: matched.runId,
+      audience: matched.audience,
     };
   }
 
@@ -162,6 +192,9 @@ export function summarizeRuntimeToken(record: RuntimeTokenRecord): RuntimeTokenS
     allowedTriggers: record.allowedTriggers ?? [],
     createdAt: record.createdAt,
     lastUsedAt: record.lastUsedAt,
+    expiresAt: record.expiresAt,
+    runId: record.runId,
+    audience: record.audience,
   };
 }
 

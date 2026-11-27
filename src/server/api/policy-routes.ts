@@ -10,7 +10,7 @@ import { DEFAULT_TENANT_ID } from "../../tenant/tenant-id.ts";
 import { RuntimeTokenService, summarizeRuntimeToken } from "../storage/runtime-token-service.ts";
 import { readTenantId } from "./auth.ts";
 import { jsonError, readJsonBody } from "./http-utils.ts";
-import { policyRequestMaxBytes, readRuntimePolicyRules, readTokenPolicy } from "./policy-input.ts";
+import { policyRequestMaxBytes, readRuntimePolicyRules, readTokenEnvelope, readTokenPolicy } from "./policy-input.ts";
 
 export interface PolicyRoutesOptions {
   /** Local-tenant token service; other tenants resolve through `runtimeDatabase.forTenant`. */
@@ -49,7 +49,7 @@ export function createPolicyRoutes({
       return jsonError(context, 400, "invalid_input", "name is required.");
     }
 
-    const created = await tokensFor(context).createToken(name, readTokenPolicy(body, true));
+    const created = await tokensFor(context).createToken(name, readTokenPolicy(body, true), readTokenEnvelope(body));
     return context.json({
       token: created.token,
       record: summarizeRuntimeToken(created.record),

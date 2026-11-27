@@ -133,6 +133,37 @@ describe("RuntimeTokenService", () => {
     });
   });
 
+  it("round-trips the grant envelope and rejects expired tokens at resolve", async () => {
+    const service = new RuntimeTokenService(new MemoryRuntimeTokenStore());
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    const created = await service.createToken(
+      "Run-scoped",
+      { allowedActions: [], blockedActions: [], allowedProxies: [], allowedConnections: [] },
+      { expiresAt, runId: "run_abc123", audience: { type: "run", id: "run_abc123", onBehalfOf: "user:u-1" } },
+    );
+
+    expect(created.record).toMatchObject({
+      expiresAt,
+      runId: "run_abc123",
+      audience: { type: "run", id: "run_abc123", onBehalfOf: "user:u-1" },
+    });
+    await expect(service.resolveToken(created.token)).resolves.toMatchObject({
+      expiresAt,
+      runId: "run_abc123",
+      audience: { type: "run", id: "run_abc123" },
+    });
+
+    const expired = await service.createToken(
+      "Already dead",
+      { allowedActions: [], blockedActions: [], allowedProxies: [], allowedConnections: [] },
+      { expiresAt: new Date(Date.now() - 1).toISOString() },
+    );
+    await expect(service.resolveToken(expired.token)).resolves.toBeUndefined();
+    await expect(service.verifyToken(expired.token)).resolves.toBe(false);
+    // The record stays listed until the sweeper collects it (OC-2b).
+    await expect(service.listTokens()).resolves.toHaveLength(2);
+  });
+
   it("defaults omitted allowedConnections to an unrestricted empty list", async () => {
     const created = await new RuntimeTokenService(new MemoryRuntimeTokenStore()).createToken("Issue bot");
     expect(created.record.allowedConnections).toEqual([]);

@@ -1,4 +1,5 @@
 import type { PolicyRules, TokenPolicy } from "../../core/action-policy.ts";
+import type { TokenAudience } from "../storage/runtime-token-service.ts";
 import type { JsonRequestBody } from "./http-utils.ts";
 
 import { Buffer } from "node:buffer";
@@ -34,6 +35,50 @@ export function readTokenPolicy(body: JsonRequestBody, allowOmitted = false): To
     allowedTriggers: readRules(body.allowedTriggers, "allowedTriggers", "action", true),
     allowedConnections: readConnectionIds(body.allowedConnections, "allowedConnections", allowOmitted),
   };
+}
+
+const AUDIENCE_TYPES = new Set(["agent", "run", "service", "session"]);
+const RUN_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
+
+/** Optional grant-envelope fields accepted by `POST /api/runtime-tokens`. */
+export function readTokenEnvelope(body: JsonRequestBody): {
+  expiresAt?: string;
+  runId?: string;
+  audience?: TokenAudience;
+} {
+  let expiresAt: string | undefined;
+  if (body.expiresAt !== undefined) {
+    if (typeof body.expiresAt !== "string" || Number.isNaN(Date.parse(body.expiresAt))) {
+      throw invalidInput("expiresAt must be an ISO-8601 instant string.");
+    }
+    expiresAt = new Date(body.expiresAt).toISOString();
+  }
+  let runId: string | undefined;
+  if (body.runId !== undefined) {
+    if (typeof body.runId !== "string" || !RUN_ID_PATTERN.test(body.runId)) {
+      throw invalidInput("runId must be 1-128 chars of [a-zA-Z0-9._-], starting alphanumeric.");
+    }
+    runId = body.runId;
+  }
+  let audience: TokenAudience | undefined;
+  if (body.audience !== undefined) {
+    const value = body.audience;
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw invalidInput("audience must be an object {type, id, onBehalfOf?}.");
+    }
+    const { type, id, onBehalfOf } = value as Record<string, unknown>;
+    if (typeof type !== "string" || !AUDIENCE_TYPES.has(type)) {
+      throw invalidInput("audience.type must be one of agent|run|service|session.");
+    }
+    if (typeof id !== "string" || id.length === 0 || id.length > 256) {
+      throw invalidInput("audience.id must be a non-empty string up to 256 chars.");
+    }
+    if (onBehalfOf !== undefined && (typeof onBehalfOf !== "string" || onBehalfOf.length > 256)) {
+      throw invalidInput("audience.onBehalfOf must be a string up to 256 chars.");
+    }
+    audience = { type: type as TokenAudience["type"], id, ...(onBehalfOf === undefined ? {} : { onBehalfOf }) };
+  }
+  return { expiresAt, runId, audience };
 }
 
 function readRules(value: unknown, fieldName: string, kind: "action" | "proxy", allowOmitted = false): string[] {

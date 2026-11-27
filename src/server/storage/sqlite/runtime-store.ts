@@ -446,7 +446,7 @@ export class SqliteRuntimeTokenStore implements IRuntimeTokenStore {
         insert into runtime_tokens (
           tenant_id, ${runtimeTokenColumns}
         )
-        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       )
       .run(
@@ -461,6 +461,9 @@ export class SqliteRuntimeTokenStore implements IRuntimeTokenStore {
         JSON.stringify(record.allowedTriggers ?? []),
         record.createdAt,
         record.lastUsedAt ?? null,
+        record.expiresAt ?? null,
+        record.runId ?? null,
+        record.audience === undefined ? null : JSON.stringify(record.audience),
       );
   }
 

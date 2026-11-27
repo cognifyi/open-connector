@@ -132,6 +132,11 @@ configs, provider preferences, and the `forInstance()` escape hatch.
   JWT `Alpha-Team` claim, `?tenant=ALPHA`, and the `tenant_id` column can
   never disagree by casing. `isTenantId` stays strict — stored ids are always
   the normalized form.
+- Runtime tokens carry a grant envelope (`expires_at`, `run_id`,
+  `audience_json`) since migration 0026: `POST /api/runtime-tokens` accepts
+  `expiresAt`/`runId`/`audience {type,id,onBehalfOf?}`; `resolveToken`
+  fails closed once `expires_at` passes; both fields ride the `RuntimeGrant`
+  so run/audit wiring (OC-3) and audience checks (OC-5) can consume them.
 - `service:admin` lookups widen to the legacy `local-admin` owner
   (`ownerAliases`): pre-OC-1 `connection_requests` rows remain reachable
   through the canonical subject, and supersession/cancel/claim match both
