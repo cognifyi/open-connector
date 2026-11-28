@@ -76,6 +76,7 @@ async function main(): Promise<void> {
     publicOriginConfigured: Boolean(process.env.OOMOL_CONNECT_ORIGIN),
     assets,
     encryptionKey: process.env.OOMOL_CONNECT_ENCRYPTION_KEY,
+    allowPlaintextSecrets: parseOptionalBooleanFlag(process.env.OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS),
     adminToken: optionalEnv("OOMOL_CONNECT_ADMIN_TOKEN"),
     runtimeToken: optionalEnv("OOMOL_CONNECT_RUNTIME_TOKEN"),
     authMode: parseAuthModeEnv(process.env.OOMOL_CONNECT_OAUTH_AUTH_MODE),
@@ -103,6 +104,10 @@ async function main(): Promise<void> {
       requireExplicitPolicy: process.env.OOMOL_CONNECT_REQUIRE_EXPLICIT_POLICY === "true",
     },
     disconnectTokenPolicy: process.env.OOMOL_CONNECT_DISCONNECT_TOKEN_POLICY === "prune" ? "prune" : undefined,
+    rateLimit: {
+      rpm: readPositiveIntegerEnv("OOMOL_CONNECT_RATE_LIMIT_RPM", 60),
+      burst: readPositiveIntegerEnv("OOMOL_CONNECT_RATE_LIMIT_BURST", 300),
+    },
     allowedCustomOAuth: parseActionPolicyList(process.env.OOMOL_CONNECT_ALLOWED_CUSTOM_OAUTH),
     oauthResultOrigins: parseOAuthResultOrigins(process.env.OOMOL_CONNECT_OAUTH_RESULT_ORIGINS),
     postgres: databaseUrl
@@ -156,9 +161,9 @@ async function main(): Promise<void> {
             "runtime API authentication is disabled; create a runtime token in the web console, set OOMOL_CONNECT_RUNTIME_TOKEN, or configure JWT authentication",
           );
         }
-        if (!process.env.OOMOL_CONNECT_ENCRYPTION_KEY) {
+        if (!process.env.OOMOL_CONNECT_ENCRYPTION_KEY && process.env.OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS) {
           logger.warn(
-            "runtime data encryption is disabled; set OOMOL_CONNECT_ENCRYPTION_KEY to encrypt stored credentials, Marketplace API keys, OAuth client configuration, pending OAuth state, and completed idempotent action responses",
+            "runtime data encryption is disabled (OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS); stored credentials, Marketplace API keys, OAuth client configuration, pending OAuth state, and completed idempotent action responses are plain text",
           );
         }
         if (!assets.staticRoot) {

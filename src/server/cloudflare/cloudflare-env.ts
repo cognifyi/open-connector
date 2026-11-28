@@ -12,6 +12,7 @@ export interface CloudflareEnv {
   OOMOL_CONNECT_EVENT_VERIFY_TOKEN?: string;
   OOMOL_CONNECT_MCP_OUTPUT_MODE?: string;
   OOMOL_CONNECT_ENCRYPTION_KEY?: string;
+  OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS?: string;
   OOMOL_CONNECT_ALLOWED_ACTIONS?: string;
   OOMOL_CONNECT_BLOCKED_ACTIONS?: string;
   OOMOL_CONNECT_ALLOWED_PROXIES?: string;
@@ -28,6 +29,8 @@ export interface CloudflareEnv {
   OOMOL_CONNECT_OAUTH_CLOSE_DELAY_SECONDS?: string;
   OOMOL_CONNECT_REQUIRE_EXPLICIT_POLICY?: string;
   OOMOL_CONNECT_DISCONNECT_TOKEN_POLICY?: string;
+  OOMOL_CONNECT_RATE_LIMIT_RPM?: string;
+  OOMOL_CONNECT_RATE_LIMIT_BURST?: string;
 }
 
 export function resolvePublicOrigin(request: Request, env: CloudflareEnv): string {

@@ -263,7 +263,7 @@ export class ActionPolicySnapshot {
       return { allowed: true, checks: [] };
     }
 
-    if (connectionId && this.allowedConnections.includes(connectionId)) {
+    if (this.allowedConnections.includes("*") || (connectionId && this.allowedConnections.includes(connectionId))) {
       return {
         allowed: true,
         checks: [{ source: "token", outcome: "allow_match", rule: connectionId }],
