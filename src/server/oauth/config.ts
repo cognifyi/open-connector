@@ -62,7 +62,9 @@ function positiveInteger(value: number | undefined, fallback: number): number {
 /** Scope string handling shared by the authorize, token, and registration endpoints. */
 export function parseScope(value: string | null | undefined): string[] {
   const requested = (value ?? "").split(/\s+/).filter((scope) => scope.length > 0);
-  const granted = requested.filter((scope) => (supportedScopes as readonly string[]).includes(scope));
+  const granted = requested.filter(
+    (scope) => (supportedScopes as readonly string[]).includes(scope) || scope.startsWith("oc:"),
+  );
   // `mcp:access` is what the whole flow exists for; a request that only asked
   // for `offline_access` would mint refresh tokens with nothing to refresh.
   return granted.includes(accessScope) ? [...new Set(granted)] : [];

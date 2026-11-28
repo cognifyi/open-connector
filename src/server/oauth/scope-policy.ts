@@ -42,6 +42,17 @@ function assertActionPattern(pattern: string): void {
   throw new ScopePolicyError(`Invalid oc:actions scope pattern: ${pattern}.`);
 }
 
+/** True when `scope` is a well-formed `oc:` connector scope. */
+export function isConnectorScope(scope: string): boolean {
+  if (!scope.startsWith("oc:")) return false;
+  try {
+    compileOAuthScopePolicy([scope]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function compileOAuthScopePolicy(scopes: readonly string[]): CompiledScopePolicy {
   const policy: CompiledScopePolicy = {
     allowedActions: [],

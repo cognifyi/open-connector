@@ -1,14 +1,14 @@
 import type { RuntimeGrant } from "../storage/runtime-token-service.ts";
 
+import { RUN_ID_PATTERN } from "./policy-input.ts";
+
 export interface RunAuditContext {
   runId?: string;
   traceId?: string;
 }
 
-/** Same charset the grant-envelope `runId` accepts at mint time. */
-const RUN_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
 /** Match the 32-hex trace-id segment of a W3C `traceparent` header. */
-const TRACEPARENT_PATTERN = /^[\da-f]{2}-([\da-f]{32})-[\da-f]{16}-[\da-f]{2}$/;
+const TRACEPARENT_PATTERN = /^(?!ff-)[\da-f]{2}-([\da-f]{32})-[\da-f]{16}-[\da-f]{2}$/;
 const ZERO_TRACE_ID = "0".repeat(32);
 
 function randomTraceId(): string {

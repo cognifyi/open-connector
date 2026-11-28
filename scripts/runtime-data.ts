@@ -2,7 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { logger } from "../src/server/logger.ts";
-import { createSecretCodec } from "../src/server/secrets/secret-codec.ts";
+import { createSecretCodec, parsePlaintextSecretsFlag } from "../src/server/secrets/secret-codec.ts";
 import {
   createNodeRuntimeDatabase,
   migratePostgresRuntimeDatabase,
@@ -65,8 +65,7 @@ if (command === "migrate") {
 } else {
   const secretCodec = createSecretCodec(
     process.env.OOMOL_CONNECT_ENCRYPTION_KEY,
-    process.env.OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS === "1" ||
-      process.env.OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS === "true",
+    parsePlaintextSecretsFlag(process.env.OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS),
   );
   if (!databaseUrl) {
     await mkdir(dataDir, { recursive: true });

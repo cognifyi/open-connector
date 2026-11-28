@@ -2,6 +2,7 @@ import type { OAuthTokenEndpointAuthMethod } from "../storage/oauth-as-stores.ts
 
 import { optionalRawString, optionalRecord } from "../../core/cast.ts";
 import { supportedScopes } from "./config.ts";
+import { isConnectorScope } from "./scope-policy.ts";
 
 /**
  * Client metadata shared by dynamic registration (RFC 7591) and client ID
@@ -62,7 +63,9 @@ export function normalizeClientMetadata(value: unknown): OAuthClientMetadata | u
   // RFC 7591 section 2: omitted token_endpoint_auth_method defaults to client_secret_basic.
   const authMethod = method ?? "client_secret_basic";
   const scopes = readStringArray(record.scope) ?? readStringArray(record.scopes) ?? [];
-  const unknownScope = scopes.find((scope) => !(supportedScopes as readonly string[]).includes(scope));
+  const unknownScope = scopes.find(
+    (scope) => !(supportedScopes as readonly string[]).includes(scope) && !isConnectorScope(scope),
+  );
   if (unknownScope !== undefined) {
     throw new ClientMetadataError("invalid_client_metadata", `Unsupported scope: ${unknownScope}`);
   }

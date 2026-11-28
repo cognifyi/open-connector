@@ -22,6 +22,7 @@ import { KVTransitFileService } from "./files/kv-transit-files.ts";
 import { R2TransitFileService } from "./files/r2-transit-files.ts";
 import { parseMcpOutputMode } from "./mcp-settings.ts";
 import { RuntimeMaintenance } from "./runtime-maintenance.ts";
+import { parsePlaintextSecretsFlag } from "./secrets/secret-codec.ts";
 import { createWorkerSecretCodec } from "./secrets/worker-secret-codec.ts";
 import { D1RuntimeDatabase } from "./storage/d1/runtime-store.ts";
 import { DEFAULT_RUN_LIMIT } from "./storage/runtime-store.ts";
@@ -156,7 +157,7 @@ async function createCloudflareApp(env: CloudflareEnv, publicOrigin: string): Pr
     }),
     disconnectTokenPolicy: env.OOMOL_CONNECT_DISCONNECT_TOKEN_POLICY === "prune" ? "prune" : undefined,
     rateLimit: {
-      rpm: readPositiveInteger(env.OOMOL_CONNECT_RATE_LIMIT_RPM, 60),
+      rpm: readRateLimitRpm(env.OOMOL_CONNECT_RATE_LIMIT_RPM),
       burst: readPositiveInteger(env.OOMOL_CONNECT_RATE_LIMIT_BURST, 300),
     },
     allowedCustomOAuth: parseActionPolicyList(env.OOMOL_CONNECT_ALLOWED_CUSTOM_OAUTH),
@@ -215,7 +216,12 @@ function createSecretCodec(env: CloudflareEnv): Promise<ISecretCodec> {
 }
 
 function allowPlaintextSecrets(env: CloudflareEnv): boolean {
-  return env.OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS === "1" || env.OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS === "true";
+  return parsePlaintextSecretsFlag(env.OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS);
+}
+
+function readRateLimitRpm(value: string | undefined): number {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : 60;
 }
 
 function createCacheKey(env: CloudflareEnv, publicOrigin: string): string {

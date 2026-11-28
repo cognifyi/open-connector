@@ -6,7 +6,7 @@ OOMOL Connect can expose managed provider actions as virtual connections. Config
 https://connector.oomol.com/.well-known/oomol-connector-marketplace
 ```
 
-When `OOMOL_CONNECT_ENCRYPTION_KEY` is configured, Connect encrypts the Marketplace API key at rest. Without it, the API key is stored in plaintext, matching the local runtime's behavior for other credentials. Plaintext storage is convenient for local testing, but deployments whose runtime database is accessible to other users should configure encryption.
+Connect encrypts the Marketplace API key at rest with `OOMOL_CONNECT_ENCRYPTION_KEY`. The key is required at startup; only local development may opt into plain-text storage with `OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS=1`.
 
 At startup, Connect fetches discovery once, validates the API key once, intersects the remote action allowlist with its local catalog, and keeps that snapshot for action execution. Discovery or authentication failures do not prevent the rest of the server from starting.
 

@@ -12,6 +12,7 @@ import { withClientLock } from "../oauth/client-lock.ts";
 import { isValidRedirectUri } from "../oauth/client-metadata.ts";
 import { supportedScopes } from "../oauth/config.ts";
 import { hashToken, randomToken } from "../oauth/jwks.ts";
+import { isConnectorScope } from "../oauth/scope-policy.ts";
 import { jsonError, readJsonBody } from "./http-utils.ts";
 
 /**
@@ -209,7 +210,9 @@ function readClientInput(body: unknown, requireAll: boolean): ClientInput {
       throw new Error("scopes must be an array of strings.");
     }
     scopes = record.scopes as string[];
-    const unsupported = scopes.find((scope) => !(supportedScopes as readonly string[]).includes(scope));
+    const unsupported = scopes.find(
+      (scope) => !(supportedScopes as readonly string[]).includes(scope) && !isConnectorScope(scope),
+    );
     if (unsupported !== undefined) {
       throw new Error(
         `Unsupported scope: ${unsupported}. Supported scopes: ${(supportedScopes as readonly string[]).join(" ")}.`,

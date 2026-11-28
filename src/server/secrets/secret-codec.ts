@@ -51,6 +51,11 @@ export class AesGcmSecretCodec implements ISecretCodec {
   }
 }
 
+/** Parse the plaintext-secrets opt-in flag; accepts 1/true case-insensitively on every platform. */
+export function parsePlaintextSecretsFlag(value: string | undefined): boolean {
+  return value === "1" || value?.toLowerCase() === "true";
+}
+
 export function createSecretCodec(encryptionKey: string | undefined, allowPlaintext = false): ISecretCodec {
   if (encryptionKey) {
     return new AesGcmSecretCodec(encryptionKey);
