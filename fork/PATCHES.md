@@ -17,6 +17,9 @@ still apply cleanly or be recorded as dropped/upstreamed.
 | `src/server/api/runtime-jwt.ts` + `auth.ts`                                 | Verified JWT resolves to a tenant-bound `RuntimeGrant` (org claim → `tenant_id`, `sub` → `jwt:<sub>`)         | active | —                             |
 | `src/tenant/` + `connection-request-store`                                  | `requireTenantId` normalizes trim/lowercase; `ownerAliases` widens `service:admin` reads to `local-admin`     | active | —                             |
 | `migrations/0026` + `runtime_tokens` grant envelope                         | `expires_at`/`run_id`/`audience_json` on tokens; `resolveToken` rejects expired; mint accepts envelope fields | active | — (token TTL is upstreamable) |
+| `src/server/runtime-maintenance.ts` + store sweep methods                   | Periodic hard-delete of expired grants; `findByAllowedConnection`/`revokeByRuntimeToken`/`deleteExpired`      | active | — (sweep is upstreamable)     |
+| `ConnectionService.onDisconnected` + disconnect cascade                     | Disconnect revokes (or `prune`s) runtime tokens referencing the connection + their OAuth tokens             | active | — (cascade is upstreamable)   |
+| `ActionPolicyService.requireExplicitPolicy`                                 | `OOMOL_CONNECT_REQUIRE_EXPLICIT_POLICY` flips token actions/connections to deny-by-default                  | active | — (flag is upstreamable)      |
 | `IConnectServerOptions`                                                     | Removed post-OC-1 dead service options (stores/services now reach handlers via `services`/`runtimeDatabase`)  | active | —                             |
 
 Fork-planned work packages (land as rows when merged):

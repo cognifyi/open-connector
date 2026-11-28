@@ -92,6 +92,7 @@ export interface ConnectorRuntimeOptions {
   providerHttpDispatch?: ProviderHttpDispatchOptions;
   /** Allow or block actions, proxies and Triggers by name. */
   actionPolicy?: ActionPolicyConfig;
+  disconnectTokenPolicy?: "revoke" | "prune";
   /** Services, or `*`, whose connections may carry their own OAuth client instead of the configured one. */
   allowedCustomOAuth?: string[];
   transitFiles?: ConnectorTransitFileOptions;
@@ -213,7 +214,7 @@ export async function createConnectorRuntime(options: ConnectorRuntimeOptions): 
     const tempDir = join(dataDir, "tmp/transit-files");
     await transitFiles.cleanupExpired();
     await cleanupStagedTransitFiles(tempDir, ttlSeconds * 1000);
-    const { app, runtimeAuthConfigured, saasCleanup, triggerMaintenance } = await createConnectApp({
+    const { app, runtimeAuthConfigured, saasCleanup, triggerMaintenance, runtimeMaintenance } = await createConnectApp({
       catalog,
       network: options.network,
       providerLoader: new ProviderLoader(executorModules),
@@ -233,6 +234,7 @@ export async function createConnectorRuntime(options: ConnectorRuntimeOptions): 
       mcpOutputMode,
       verifyRuntimeJwt,
       actionPolicy: new ActionPolicyService(options.actionPolicy),
+      disconnectTokenPolicy: options.disconnectTokenPolicy,
       allowedCustomOAuth: options.allowedCustomOAuth,
       logger: options.logger,
       serveDocumentation: options.apiReference ?? false,
@@ -241,6 +243,7 @@ export async function createConnectorRuntime(options: ConnectorRuntimeOptions): 
     });
     saasCleanup.start();
     triggerMaintenance.start();
+    runtimeMaintenance.start();
     const shutdown = new AbortController();
     const pending = new Set<Promise<Response>>();
     let closing: Promise<void> | undefined;
@@ -268,7 +271,12 @@ export async function createConnectorRuntime(options: ConnectorRuntimeOptions): 
         if (!closing) {
           closing = Promise.resolve().then(async () => {
             shutdown.abort(new Error("Open Connector runtime is closing."));
-            await Promise.allSettled([...pending, saasCleanup.close(), triggerMaintenance.close()]);
+            await Promise.allSettled([
+              ...pending,
+              saasCleanup.close(),
+              triggerMaintenance.close(),
+              runtimeMaintenance.close(),
+            ]);
             try {
               await database.close();
             } finally {

@@ -410,3 +410,63 @@ describe("Trigger policy", () => {
     expect(service.createSnapshot(rules, token).evaluateTrigger("gmail.on_message_received").allowed).toBe(true);
   });
 });
+
+describe("requireExplicitPolicy (hardened mode)", () => {
+  const hardened = new ActionPolicyService({ requireExplicitPolicy: true });
+  const openToken = {
+    allowedActions: [],
+    blockedActions: [],
+    allowedProxies: [],
+    allowedConnections: [],
+    allowedTriggers: [],
+  };
+
+  it("denies actions when the token allowlist is empty", () => {
+    expect(hardened.createSnapshot(undefined, openToken).evaluate(action)).toMatchObject({
+      allowed: false,
+      code: "action_not_allowed",
+      checks: [{ source: "token", outcome: "allow_miss" }],
+    });
+    // An explicit token allowlist still grants under the flag.
+    expect(hardened.createSnapshot(undefined, { ...openToken, allowedActions: ["github.*"] }).evaluate(action)).toEqual(
+      { allowed: true, checks: [{ source: "token", outcome: "allow_match", rule: "github.*" }] },
+    );
+  });
+
+  it("denies connections when the token connection list is empty", () => {
+    expect(hardened.createSnapshot(undefined, openToken).evaluateConnection(workConnectionId)).toMatchObject({
+      allowed: false,
+      code: "connection_not_allowed",
+      checks: [{ source: "token", outcome: "allow_miss" }],
+    });
+    expect(hardened.createSnapshot(undefined, openToken).evaluateConnection()).toMatchObject({
+      allowed: false,
+      code: "connection_not_allowed",
+    });
+    expect(
+      hardened
+        .createSnapshot(undefined, { ...openToken, allowedConnections: [workConnectionId] })
+        .evaluateConnection(workConnectionId),
+    ).toMatchObject({ allowed: true });
+  });
+
+  it("does not tighten deployment or runtime layers", () => {
+    // Deployment/runtime allowlists remain "no constraint" when empty; only
+    // the token layer flips to deny. An explicit token grant proves the layers pass.
+    const token = { ...openToken, allowedActions: ["*"], allowedConnections: [workConnectionId] };
+    expect(hardened.createSnapshot(undefined, token).evaluate(action)).toMatchObject({ allowed: true });
+    expect(hardened.createSnapshot(undefined, token).evaluateConnection(workConnectionId)).toMatchObject({
+      allowed: true,
+    });
+  });
+
+  it("leaves proxies and triggers deny-by-default as before", () => {
+    const decision = hardened.createSnapshot(undefined, openToken).evaluateProxy("github");
+    expect(decision).toMatchObject({ allowed: false, code: "proxy_not_allowed" });
+  });
+
+  it("does not affect snapshots without a token", () => {
+    expect(hardened.createSnapshot().evaluate(action)).toEqual({ allowed: true, checks: [] });
+    expect(hardened.createSnapshot().evaluateConnection(workConnectionId)).toMatchObject({ allowed: true });
+  });
+});

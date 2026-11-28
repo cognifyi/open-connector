@@ -100,7 +100,9 @@ async function main(): Promise<void> {
       blockedProxies: parseActionPolicyList(process.env.OOMOL_CONNECT_BLOCKED_PROXIES),
       allowedTriggers: parseActionPolicyList(process.env.OOMOL_CONNECT_ALLOWED_TRIGGERS),
       blockedTriggers: parseActionPolicyList(process.env.OOMOL_CONNECT_BLOCKED_TRIGGERS),
+      requireExplicitPolicy: process.env.OOMOL_CONNECT_REQUIRE_EXPLICIT_POLICY === "true",
     },
+    disconnectTokenPolicy: process.env.OOMOL_CONNECT_DISCONNECT_TOKEN_POLICY === "prune" ? "prune" : undefined,
     allowedCustomOAuth: parseActionPolicyList(process.env.OOMOL_CONNECT_ALLOWED_CUSTOM_OAUTH),
     oauthResultOrigins: parseOAuthResultOrigins(process.env.OOMOL_CONNECT_OAUTH_RESULT_ORIGINS),
     postgres: databaseUrl

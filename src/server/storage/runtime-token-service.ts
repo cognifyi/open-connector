@@ -70,9 +70,13 @@ export interface IRuntimeTokenStore {
   list(): Promise<RuntimeTokenRecord[]>;
   findByHash(tokenHash: string): Promise<RuntimeTokenRecord | undefined>;
   findById(id: string): Promise<RuntimeTokenRecord | undefined>;
+  /** Tokens whose `allowedConnections` list mentions `connectionId`; used by the disconnect cascade. */
+  findByAllowedConnection(connectionId: string): Promise<RuntimeTokenRecord[]>;
   updatePolicy(id: string, policy: TokenPolicy): Promise<RuntimeTokenRecord | undefined>;
   revoke(id: string): Promise<boolean>;
   markUsed(id: string, usedAt: string): Promise<void>;
+  /** Hard-delete rows whose `expires_at` has passed. Returns the deleted count. */
+  deleteExpired(nowIso: string): Promise<number>;
 }
 
 const tokenPrefix = "oct_";

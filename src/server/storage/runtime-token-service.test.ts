@@ -12,9 +12,11 @@ describe("RuntimeTokenService", () => {
       hasAny: vi.fn(async () => false),
       findByHash: vi.fn(),
       findById: vi.fn(),
+      findByAllowedConnection: vi.fn(async () => []),
       updatePolicy: vi.fn(),
       revoke: vi.fn(async () => false),
       markUsed: vi.fn(),
+      deleteExpired: vi.fn(async () => 0),
     };
     const service = new RuntimeTokenService(store);
 
@@ -42,9 +44,11 @@ describe("RuntimeTokenService", () => {
       hasAny: vi.fn(async () => true),
       findByHash: vi.fn(async () => record),
       findById: vi.fn(),
+      findByAllowedConnection: vi.fn(async () => []),
       updatePolicy: vi.fn(),
       revoke: vi.fn(async () => false),
       markUsed: vi.fn(),
+      deleteExpired: vi.fn(async () => 0),
     };
 
     await expect(new RuntimeTokenService(store).resolveToken(token)).resolves.toEqual({
@@ -80,11 +84,13 @@ describe("RuntimeTokenService", () => {
       hasAny: vi.fn(async () => true),
       findByHash: vi.fn(async () => record),
       findById: vi.fn(),
+      findByAllowedConnection: vi.fn(async () => []),
       updatePolicy: vi.fn(),
       revoke: vi.fn(async () => false),
       markUsed: vi.fn(async () => {
         throw new Error("D1_ERROR: network connection lost");
       }),
+      deleteExpired: vi.fn(async () => 0),
     };
     const logger = { error: vi.fn(), info: vi.fn(), warn: vi.fn() };
 
@@ -234,6 +240,10 @@ class MemoryRuntimeTokenStore implements IRuntimeTokenStore {
     return updated;
   }
 
+  async findByAllowedConnection(connectionId: string): Promise<RuntimeTokenRecord[]> {
+    return [...this.tokens.values()].filter((token) => token.allowedConnections?.includes(connectionId));
+  }
+
   async revoke(id: string): Promise<boolean> {
     return this.tokens.delete(id);
   }
@@ -243,5 +253,16 @@ class MemoryRuntimeTokenStore implements IRuntimeTokenStore {
     if (token) {
       this.tokens.set(id, { ...token, lastUsedAt: usedAt });
     }
+  }
+
+  async deleteExpired(nowIso: string): Promise<number> {
+    let deleted = 0;
+    for (const [id, token] of this.tokens) {
+      if (token.expiresAt !== undefined && token.expiresAt <= nowIso) {
+        this.tokens.delete(id);
+        deleted += 1;
+      }
+    }
+    return deleted;
   }
 }

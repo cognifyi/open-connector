@@ -5247,6 +5247,10 @@ class MemoryRuntimeTokenStore implements IRuntimeTokenStore {
     return updated;
   }
 
+  async findByAllowedConnection(connectionId: string): Promise<RuntimeTokenRecord[]> {
+    return [...this.tokens.values()].filter((token) => token.allowedConnections?.includes(connectionId));
+  }
+
   async revoke(id: string): Promise<boolean> {
     return this.tokens.delete(id);
   }
@@ -5256,6 +5260,17 @@ class MemoryRuntimeTokenStore implements IRuntimeTokenStore {
     if (token) {
       this.tokens.set(id, { ...token, lastUsedAt: usedAt });
     }
+  }
+
+  async deleteExpired(nowIso: string): Promise<number> {
+    let deleted = 0;
+    for (const [id, token] of this.tokens) {
+      if (token.expiresAt !== undefined && token.expiresAt <= nowIso) {
+        this.tokens.delete(id);
+        deleted += 1;
+      }
+    }
+    return deleted;
   }
 }
 
