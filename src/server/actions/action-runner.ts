@@ -43,6 +43,8 @@ export interface RunActionInput {
   connectionId?: string;
   policy: ActionPolicySnapshot;
   runtimeTokenId?: string;
+  runId?: string;
+  traceId?: string;
   signal?: AbortSignal;
 }
 
@@ -225,6 +227,9 @@ export class ActionRunner {
       connectionId: connection?.summary?.id,
       connectionProfile: connection?.summary?.profile,
       runtimeTokenId: input.runtimeTokenId,
+      grantId: input.runtimeTokenId,
+      runId: input.runId,
+      traceId: input.traceId,
       policy,
       inputSummary: summarizeForRunLog(input.input),
       outputSummary: result.ok ? summarizeForRunLog(result.output) : undefined,

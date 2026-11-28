@@ -21,6 +21,9 @@ export interface RunLog {
   connectionId?: string;
   connectionProfile?: CredentialProfile;
   runtimeTokenId?: string;
+  grantId?: string;
+  runId?: string;
+  traceId?: string;
   policy?: ActionPolicyDecision;
   inputSummary?: unknown;
   outputSummary?: unknown;
@@ -35,6 +38,7 @@ export interface RunLogListInput {
   actionId?: string;
   caller?: RunLogCaller;
   ok?: boolean;
+  since?: string;
 }
 
 export interface RunLogPage {

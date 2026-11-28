@@ -97,6 +97,7 @@ describe("SqliteRuntimeDatabase", () => {
       "0024_trigger_source_tenant_pk.sql",
       "0025_normalize_tenant_ids.sql",
       "0026_grant_envelope.sql",
+      "0027_run_audit.sql",
     ];
     expect(entries.filter((entry) => entry.message === "sqlite migration started")).toEqual(
       migrations.map((migration) => ({ fields: { migration }, message: "sqlite migration started" })),
@@ -581,6 +582,10 @@ describe("SqliteRuntimeDatabase", () => {
       raw.exec(readFileSync(new URL(`../../../../migrations/${migration}`, import.meta.url), "utf8"));
     }
     raw.exec("alter table runs add column tenant_id text not null default 'local'");
+    raw.exec("alter table runs add column run_id text");
+    raw.exec("alter table runs add column trace_id text");
+    raw.exec("alter table runs add column grant_id text");
+    raw.exec("alter table runs add column connection_id text");
     const store = new SqliteRunLogStore(raw, 1, "local");
     await store.add(createRun("run-1", "2026-06-30T00:00:00.000Z"));
     raw.exec(`

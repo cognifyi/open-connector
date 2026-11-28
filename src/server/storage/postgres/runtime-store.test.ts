@@ -176,6 +176,7 @@ describe("PostgreSQL migrations with PGlite", () => {
           { name: "0024_trigger_source_tenant_pk.sql" },
           { name: "0025_normalize_tenant_ids.sql" },
           { name: "0026_grant_envelope.sql" },
+          { name: "0027_run_audit.sql" },
         ],
       });
 
@@ -247,6 +248,7 @@ describe("PostgreSQL migrations with a custom migration source", () => {
           { name: "0024_trigger_source_tenant_pk.sql" },
           { name: "0025_normalize_tenant_ids.sql" },
           { name: "0026_grant_envelope.sql" },
+          { name: "0027_run_audit.sql" },
           { name: "9998_custom.sql" },
         ],
       });

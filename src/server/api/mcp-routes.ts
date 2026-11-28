@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import { PromiseCache } from "../../core/promise-cache.ts";
 import { readRuntimeGrant, readTenantId } from "./auth.ts";
 import { HttpRequestError } from "./http-utils.ts";
+import { readRunAuditContext } from "./run-context.ts";
 
 export type McpModule = typeof McpRuntime;
 
@@ -53,6 +54,7 @@ export function createMcpRoutes({ services, outputMode, getPolicySnapshot }: Mcp
       outputMode,
       getPolicySnapshot: () => getPolicySnapshot(context),
       runtimeGrant: readRuntimeGrant(context),
+      ...readRunAuditContext(context.req.raw.headers, readRuntimeGrant(context)),
       signal: context.req.raw.signal,
     });
   });

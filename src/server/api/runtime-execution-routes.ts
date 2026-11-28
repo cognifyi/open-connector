@@ -1,6 +1,7 @@
 import type { ActionPolicySnapshot } from "../../core/action-policy.ts";
 import type { RuntimeGrant } from "../storage/runtime-token-service.ts";
 import type { ScopedServices, TenantServices } from "../tenant-services.ts";
+import type { RunAuditContext } from "./run-context.ts";
 import type { RuntimeActionHttpResult } from "./runtime-api.ts";
 import type { Context } from "hono";
 
@@ -17,6 +18,7 @@ import {
 } from "../actions/action-idempotency.ts";
 import { readRuntimeGrant, readTenantId } from "./auth.ts";
 import { HttpRequestError, readConnectionName, readJsonBody } from "./http-utils.ts";
+import { readRunAuditContext } from "./run-context.ts";
 import {
   mapConnectionErrorStatus,
   serializeProxyFailure,
@@ -53,6 +55,7 @@ export function createRuntimeExecutionRoutes({ services, getPolicySnapshot }: Ru
     runtimeGrant: RuntimeGrant | undefined,
     signal: AbortSignal | undefined,
     connectionId?: string,
+    audit?: RunAuditContext,
   ): Promise<RuntimeActionHttpResult> => {
     try {
       const run = await scopedServices.actions.run({
@@ -63,6 +66,8 @@ export function createRuntimeExecutionRoutes({ services, getPolicySnapshot }: Ru
         connectionId,
         policy,
         runtimeTokenId: runtimeGrant?.tokenId,
+        runId: audit?.runId,
+        traceId: audit?.traceId,
         signal,
       });
       if (!run) {
@@ -105,6 +110,7 @@ export function createRuntimeExecutionRoutes({ services, getPolicySnapshot }: Ru
     const connectionName = readConnectionName(context, body);
     const connectionId = optionalString(context.req.header("x-oo-connector-app-id"));
     const runtimeGrant = readRuntimeGrant(context);
+    const auditContext = readRunAuditContext(context.req.raw.headers, runtimeGrant);
     let policy: ActionPolicySnapshot;
     try {
       policy = await getPolicySnapshot(context);
@@ -128,6 +134,7 @@ export function createRuntimeExecutionRoutes({ services, getPolicySnapshot }: Ru
           runtimeGrant,
           context.req.raw.signal,
           connectionId,
+          auditContext,
         ),
       );
     }
@@ -153,6 +160,7 @@ export function createRuntimeExecutionRoutes({ services, getPolicySnapshot }: Ru
           runtimeGrant,
           context.req.raw.signal,
           connectionId,
+          auditContext,
         ),
       );
     }
@@ -217,6 +225,7 @@ export function createRuntimeExecutionRoutes({ services, getPolicySnapshot }: Ru
       runtimeGrant,
       context.req.raw.signal,
       connectionId,
+      auditContext,
     );
     const completed = await scopedServices.idempotency.complete({
       keyHash,

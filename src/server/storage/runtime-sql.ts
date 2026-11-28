@@ -109,6 +109,9 @@ export async function listRunLogs(
   if (input.ok !== undefined) {
     conditions.push(`ok = ${bind(input.ok ? 1 : 0)}`);
   }
+  if (input.since !== undefined) {
+    conditions.push(`started_at >= ${bind(input.since)}`);
+  }
   const where = conditions.length > 0 ? `where ${conditions.join(" and ")}` : "";
   const sql = `select service, value from runs ${where} order by started_at desc, id desc limit ${bind(limit + 1)}`;
 
