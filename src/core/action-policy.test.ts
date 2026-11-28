@@ -332,6 +332,20 @@ describe("ActionPolicyService", () => {
     }
   });
 
+  it("treats a wildcard allowedConnections entry as any connection", () => {
+    const snapshot = new ActionPolicyService().createSnapshot(undefined, {
+      allowedActions: ["github.*"],
+      blockedActions: [],
+      allowedProxies: [],
+      allowedConnections: ["*"],
+    });
+
+    expect(snapshot.evaluateConnection(otherConnectionId)).toEqual({
+      allowed: true,
+      checks: [{ source: "token", outcome: "allow_match", rule: otherConnectionId }],
+    });
+  });
+
   it("matches restricted connections by exact stable IDs", () => {
     const snapshot = new ActionPolicyService().createSnapshot(undefined, {
       allowedActions: ["github.*"],

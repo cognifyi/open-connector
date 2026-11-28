@@ -39,7 +39,7 @@ const mcpOAuthCache = new PromiseCache<McpOAuthHandler>();
 export default {
   async scheduled(_event: unknown, env: CloudflareEnv, ctx: CloudflareExecutionContext): Promise<void> {
     const database = new D1RuntimeDatabase(env.DB, {
-      secretCodec: await createSecretCodec(env.OOMOL_CONNECT_ENCRYPTION_KEY),
+      secretCodec: await createSecretCodec(env),
     });
     const cleanup = new SaasCleanupService({
       network: {
@@ -109,7 +109,7 @@ async function createCloudflareApp(env: CloudflareEnv, publicOrigin: string): Pr
   // Workers keep paying their evaluation here, at app creation, so the first /mcp or /docs request of an isolate
   // is served the same way as every later one.
   await preloadOptionalServerModules();
-  const secretCodec = await createSecretCodec(env.OOMOL_CONNECT_ENCRYPTION_KEY);
+  const secretCodec = await createSecretCodec(env);
   return await createConnectApp({
     network: {
       allowPrivateNetwork: parsePrivateNetworkAccessFlag(env.OOMOL_CONNECT_ALLOW_PRIVATE_NETWORK),
@@ -155,6 +155,10 @@ async function createCloudflareApp(env: CloudflareEnv, publicOrigin: string): Pr
       requireExplicitPolicy: env.OOMOL_CONNECT_REQUIRE_EXPLICIT_POLICY === "true",
     }),
     disconnectTokenPolicy: env.OOMOL_CONNECT_DISCONNECT_TOKEN_POLICY === "prune" ? "prune" : undefined,
+    rateLimit: {
+      rpm: readPositiveInteger(env.OOMOL_CONNECT_RATE_LIMIT_RPM, 60),
+      burst: readPositiveInteger(env.OOMOL_CONNECT_RATE_LIMIT_BURST, 300),
+    },
     allowedCustomOAuth: parseActionPolicyList(env.OOMOL_CONNECT_ALLOWED_CUSTOM_OAUTH),
     oauthResultOrigins: parseOAuthResultOrigins(env.OOMOL_CONNECT_OAUTH_RESULT_ORIGINS),
     logger: workerLogger,
@@ -203,8 +207,15 @@ function loadCatalogOnce(assets: AssetsBinding): Promise<CatalogStore> {
   );
 }
 
-function createSecretCodec(encryptionKey: string | undefined): Promise<ISecretCodec> {
-  return secretCodecCache.get(encryptionKey ?? "", () => createWorkerSecretCodec(encryptionKey));
+function createSecretCodec(env: CloudflareEnv): Promise<ISecretCodec> {
+  return secretCodecCache.get(
+    `${env.OOMOL_CONNECT_ENCRYPTION_KEY ?? ""}|${env.OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS ?? ""}`,
+    () => createWorkerSecretCodec(env.OOMOL_CONNECT_ENCRYPTION_KEY, allowPlaintextSecrets(env)),
+  );
+}
+
+function allowPlaintextSecrets(env: CloudflareEnv): boolean {
+  return env.OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS === "1" || env.OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS === "true";
 }
 
 function createCacheKey(env: CloudflareEnv, publicOrigin: string): string {
@@ -219,6 +230,7 @@ function createCacheKey(env: CloudflareEnv, publicOrigin: string): string {
     mcpOutputMode: env.OOMOL_CONNECT_MCP_OUTPUT_MODE ?? "",
     requireRuntimeAuth: Boolean(env.OAUTH_KV),
     encryptionKey: env.OOMOL_CONNECT_ENCRYPTION_KEY ?? "",
+    allowPlaintextSecrets: env.OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS ?? "",
     allowedActions: env.OOMOL_CONNECT_ALLOWED_ACTIONS ?? "",
     blockedActions: env.OOMOL_CONNECT_BLOCKED_ACTIONS ?? "",
     allowedProxies: env.OOMOL_CONNECT_ALLOWED_PROXIES ?? "",
@@ -233,6 +245,8 @@ function createCacheKey(env: CloudflareEnv, publicOrigin: string): string {
     oauthCloseDelaySeconds: env.OOMOL_CONNECT_OAUTH_CLOSE_DELAY_SECONDS ?? "",
     requireExplicitPolicy: env.OOMOL_CONNECT_REQUIRE_EXPLICIT_POLICY ?? "",
     disconnectTokenPolicy: env.OOMOL_CONNECT_DISCONNECT_TOKEN_POLICY ?? "",
+    rateLimitRpm: env.OOMOL_CONNECT_RATE_LIMIT_RPM ?? "",
+    rateLimitBurst: env.OOMOL_CONNECT_RATE_LIMIT_BURST ?? "",
   });
 }
 

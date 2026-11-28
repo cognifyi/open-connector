@@ -5,8 +5,19 @@ import { PlainTextSecretCodec } from "./secret-codec-core.ts";
 const encryptedPrefix = "enc:worker:v1:";
 const keySalt = "oomol-connect-worker-secret-store-v1";
 
-export async function createWorkerSecretCodec(encryptionKey: string | undefined): Promise<ISecretCodec> {
-  return encryptionKey ? await WorkerAesGcmSecretCodec.create(encryptionKey) : new PlainTextSecretCodec();
+export async function createWorkerSecretCodec(
+  encryptionKey: string | undefined,
+  allowPlaintext = false,
+): Promise<ISecretCodec> {
+  if (encryptionKey) {
+    return await WorkerAesGcmSecretCodec.create(encryptionKey);
+  }
+  if (!allowPlaintext) {
+    throw new Error(
+      "OOMOL_CONNECT_ENCRYPTION_KEY is required to store credentials; set it or OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS=1 for development.",
+    );
+  }
+  return new PlainTextSecretCodec();
 }
 
 export class WorkerAesGcmSecretCodec implements ISecretCodec {

@@ -51,6 +51,14 @@ export class AesGcmSecretCodec implements ISecretCodec {
   }
 }
 
-export function createSecretCodec(encryptionKey: string | undefined): ISecretCodec {
-  return encryptionKey ? new AesGcmSecretCodec(encryptionKey) : new PlainTextSecretCodec();
+export function createSecretCodec(encryptionKey: string | undefined, allowPlaintext = false): ISecretCodec {
+  if (encryptionKey) {
+    return new AesGcmSecretCodec(encryptionKey);
+  }
+  if (!allowPlaintext) {
+    throw new Error(
+      "OOMOL_CONNECT_ENCRYPTION_KEY is required to store credentials; set it or OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS=1 for development.",
+    );
+  }
+  return new PlainTextSecretCodec();
 }

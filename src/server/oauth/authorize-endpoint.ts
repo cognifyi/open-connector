@@ -21,6 +21,7 @@ import { redirectUriMatches } from "./client-metadata.ts";
 import { accessScope, offlineAccessScope, parseScope } from "./config.ts";
 import { hashToken, randomToken } from "./jwks.ts";
 import { isValidCodeChallenge } from "./pkce.ts";
+import { compileOAuthScopePolicy, ScopePolicyError } from "./scope-policy.ts";
 
 /**
  * The authorization endpoint (RFC 6749 section 3.1) with an admin-gated consent
@@ -390,17 +391,21 @@ export async function handleAuthorizePost(context: Context, deps: AuthorizeDepen
     const backingTtlSeconds = request.scope.includes(offlineAccessScope)
       ? deps.config.refreshTokenTtlSeconds
       : deps.config.accessTokenTtlSeconds;
-    const backing = await runtimeTokens.createToken(
-      `MCP OAuth • ${current.clientName.slice(0, 120)}`,
-      {
-        allowedActions: [],
-        blockedActions: [],
-        allowedProxies: [],
-        allowedConnections: [],
-        allowedTriggers: [],
-      },
-      { expiresAt: new Date(Date.now() + backingTtlSeconds * 1000).toISOString() },
-    );
+    let scopePolicy: ReturnType<typeof compileOAuthScopePolicy>;
+    try {
+      scopePolicy = compileOAuthScopePolicy(request.scope);
+    } catch (error) {
+      if (error instanceof ScopePolicyError) {
+        return completeRedirect({
+          error: "invalid_scope",
+          error_description: error.message,
+        });
+      }
+      throw error;
+    }
+    const backing = await runtimeTokens.createToken(`MCP OAuth • ${current.clientName.slice(0, 120)}`, scopePolicy, {
+      expiresAt: new Date(Date.now() + backingTtlSeconds * 1000).toISOString(),
+    });
     const code = randomToken(32);
     try {
       await scoped.oauthCodeStore.add({

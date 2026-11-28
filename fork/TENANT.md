@@ -172,6 +172,21 @@ configs, provider preferences, and the `forInstance()` escape hatch.
   `since`/`limit`/`service`/`actionId`/`caller`/`ok` filters mirror
   `GET /api/runs`. The export is per-tenant (`?tenant=` selects the stream);
   there is no cross-tenant audit view.
+
+- Security baseline (OC-4): stored credentials now require
+  `OOMOL_CONNECT_ENCRYPTION_KEY` — startup fails fast without it on both the
+  Node and Worker paths; `OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS=1` is the
+  explicit development escape hatch. `/v1/*` and `/mcp*` are rate limited per
+  `(tenant_id, token_id)` token bucket — `OOMOL_CONNECT_RATE_LIMIT_RPM`
+  (default 60) and `OOMOL_CONNECT_RATE_LIMIT_BURST` (default 300) — with
+  `429` + `Retry-After` on excess. Buckets are instance-local by design.
+  The inbound OAuth authorization server compiles granted scopes into the
+  backing grant's policy: `oc:actions:<pattern>` (`*`, `<svc>.*`,
+  `<svc>.<action>`), `oc:connections:<id|*>`, `oc:proxies:<service|*>`;
+  malformed `oc:` scopes fail the authorize redirect with `invalid_scope`,
+  and `*` in `allowedConnections` now means any connection. Absent `oc:`
+  scopes keep the deployment default (open, or deny-all under
+  `OOMOL_CONNECT_REQUIRE_EXPLICIT_POLICY`).
   Hardened deployments must mint tokens with explicit policies — and note
   that both OAuth-AS-backed grants and JWT-derived grants still mint with
   empty allow-lists until the OC-4 scope→policy mapping lands, so they

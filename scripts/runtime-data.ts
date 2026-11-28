@@ -63,7 +63,11 @@ if (command === "migrate") {
     });
   }
 } else {
-  const secretCodec = createSecretCodec(process.env.OOMOL_CONNECT_ENCRYPTION_KEY);
+  const secretCodec = createSecretCodec(
+    process.env.OOMOL_CONNECT_ENCRYPTION_KEY,
+    process.env.OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS === "1" ||
+      process.env.OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS === "true",
+  );
   if (!databaseUrl) {
     await mkdir(dataDir, { recursive: true });
   }
@@ -83,7 +87,7 @@ if (command === "migrate") {
   const target = databaseUrl ? "the PostgreSQL runtime database" : databasePath;
   try {
     if (command === "rotate-key") {
-      await database.rotateSecretCodec(createSecretCodec(options.plain ? undefined : nextEncryptionKey));
+      await database.rotateSecretCodec(createSecretCodec(options.plain ? undefined : nextEncryptionKey, options.plain));
       console.log(`Rotated runtime secret encryption in ${target}.`);
     } else if (command === "reset-instance") {
       const snapshot = await database.saasProjectStore.inspectInstance();

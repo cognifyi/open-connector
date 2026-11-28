@@ -7,6 +7,7 @@ import type { SaasOAuthService } from "../saas/saas-oauth-service.ts";
 import type { SaasProjectService } from "../saas/saas-project-service.ts";
 import type { LocalAuthOptions } from "./api/auth.ts";
 import type { PolicySnapshotProvider } from "./api/policy-snapshot.ts";
+import type { RateLimitConfig } from "./api/rate-limit.ts";
 import type { RuntimeStatus } from "./api/runtime-api.ts";
 import type { ITransitFileService } from "./files/transit-file-store.ts";
 import type { McpOutputMode } from "./mcp-settings.ts";
@@ -41,6 +42,7 @@ import { createMcpRoutes, loadMcpModule } from "./api/mcp-routes.ts";
 import { createOAuthClientRoutes } from "./api/oauth-client-routes.ts";
 import { createPolicyRoutes } from "./api/policy-routes.ts";
 import { createPolicySnapshotProvider } from "./api/policy-snapshot.ts";
+import { createRateLimitMiddleware } from "./api/rate-limit.ts";
 import { createRunLogRoutes } from "./api/run-log-routes.ts";
 import { executionFailureStatus } from "./api/runtime-api.ts";
 import { writeRuntimeFailure, writeRuntimeSuccess } from "./api/runtime-api.ts";
@@ -108,6 +110,8 @@ export interface IConnectServerOptions {
   marketplace?: MarketplaceService;
   saasProject?: SaasProjectService;
   saasOAuth?: SaasOAuthService;
+  /** Per-(tenant, token) rate limit on /v1 and /mcp execution endpoints. */
+  rateLimit?: RateLimitConfig;
 }
 
 /**
@@ -184,6 +188,12 @@ export class ConnectServer {
       app.use("/api/*", compress());
     }
     app.use("*", createLocalAuthMiddleware(auth));
+    if (this.options.rateLimit) {
+      const rateLimit = createRateLimitMiddleware(this.options.rateLimit);
+      app.use("/v1/*", rateLimit);
+      app.use("/mcp", rateLimit);
+      app.use("/mcp/*", rateLimit);
+    }
     if (this.options.customMcp) {
       // Each view's catalog holds its own snapshot: resolve the request's
       // tenant first so custom MCP writes always hit the scoped overlay.

@@ -67,8 +67,10 @@ export interface ConnectorRuntimeOptions {
   publicOrigin: string;
   /** False when the host supplied a development fallback instead of an explicit public origin. */
   publicOriginConfigured?: boolean;
-  /** Encrypts stored credentials, OAuth client configuration, pending OAuth state and replayed action responses. Omit to store them in plain text. */
+  /** Encrypts stored credentials, OAuth client configuration, pending OAuth state and replayed action responses. Required unless `allowPlaintextSecrets` opts into plain-text storage. */
   encryptionKey?: string;
+  /** Development-only escape hatch: store credentials in plain text when `encryptionKey` is omitted. Production deployments must not set this. */
+  allowPlaintextSecrets?: boolean;
   /** Bearer token required for management requests such as connections, OAuth clients and policies. Omit to leave them open. */
   adminToken?: string;
   /** Static bearer token for the /v1 and /mcp execution API. JWT verification and console-issued tokens are the alternatives. */
@@ -93,6 +95,8 @@ export interface ConnectorRuntimeOptions {
   /** Allow or block actions, proxies and Triggers by name. */
   actionPolicy?: ActionPolicyConfig;
   disconnectTokenPolicy?: "revoke" | "prune";
+  /** Per-(tenant, token) rate limit on /v1 and /mcp: sustained rpm plus burst capacity. Defaults to 60/300. */
+  rateLimit?: { rpm?: number; burst?: number };
   /** Services, or `*`, whose connections may carry their own OAuth client instead of the configured one. */
   allowedCustomOAuth?: string[];
   transitFiles?: ConnectorTransitFileOptions;
@@ -159,7 +163,7 @@ export async function createConnectorRuntime(options: ConnectorRuntimeOptions): 
     catalogIndexFile: join(assetDirectory, "catalog/apps-index.json"),
     migrationDirectory: join(assetDirectory, "migrations"),
   };
-  const secretCodec = createSecretCodec(options.encryptionKey);
+  const secretCodec = createSecretCodec(options.encryptionKey, options.allowPlaintextSecrets);
   const verifyRuntimeJwt = await createRuntimeJwtVerifier(options.jwt ?? {});
   const lazySchemas = options.lazySchemas ?? true;
   if (lazySchemas && !assets.catalogIndexFile) {
@@ -235,6 +239,9 @@ export async function createConnectorRuntime(options: ConnectorRuntimeOptions): 
       verifyRuntimeJwt,
       actionPolicy: new ActionPolicyService(options.actionPolicy),
       disconnectTokenPolicy: options.disconnectTokenPolicy,
+      rateLimit: options.rateLimit
+        ? { rpm: options.rateLimit.rpm ?? 60, burst: options.rateLimit.burst ?? 300 }
+        : { rpm: 60, burst: 300 },
       allowedCustomOAuth: options.allowedCustomOAuth,
       logger: options.logger,
       serveDocumentation: options.apiReference ?? false,

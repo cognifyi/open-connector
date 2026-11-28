@@ -11,9 +11,10 @@ describe("worker secret codecs", () => {
     await expect(codec.decode(stored)).resolves.toBe("secret");
   });
 
-  it("keeps plaintext payloads readable when encryption is disabled", async () => {
-    const codec = await createWorkerSecretCodec(undefined);
+  it("fails fast without a key unless plaintext is explicitly allowed", async () => {
+    await expect(createWorkerSecretCodec(undefined)).rejects.toThrow("OOMOL_CONNECT_ENCRYPTION_KEY");
 
+    const codec = await createWorkerSecretCodec(undefined, true);
     await expect(codec.encode("value")).resolves.toBe("value");
     await expect(codec.decode("value")).resolves.toBe("value");
   });

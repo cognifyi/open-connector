@@ -4,6 +4,7 @@ import type { ProviderHttpDispatchOptions } from "../core/provider-http-dispatch
 import type { ProviderNetworkPolicy } from "../core/provider-network-policy.ts";
 import type { RuntimeLogger, TransitFileUpload } from "../core/types.ts";
 import type { IProviderLoader } from "../providers/provider-loader.ts";
+import type { RateLimitConfig } from "./api/rate-limit.ts";
 import type { RuntimeJwtVerifier } from "./api/runtime-jwt.ts";
 import type { ITransitFileService } from "./files/transit-file-store.ts";
 import type { McpOutputMode } from "./mcp-settings.ts";
@@ -83,6 +84,8 @@ export interface ConnectAppOptions {
    * just the connection from each allowlist).
    */
   disconnectTokenPolicy?: "revoke" | "prune";
+  /** Per-(tenant, token) rate limit on /v1 and /mcp execution endpoints. */
+  rateLimit?: RateLimitConfig;
 }
 
 export interface ConnectApp {
@@ -368,6 +371,7 @@ export async function createConnectApp(options: ConnectAppOptions): Promise<Conn
       marketplace,
       saasProject,
       saasOAuth,
+      rateLimit: options.rateLimit,
       compressApiResponses: options.compressApiResponses,
       serveDocumentation: options.serveDocumentation,
       oauthCloseDelaySeconds: options.oauthCloseDelaySeconds,

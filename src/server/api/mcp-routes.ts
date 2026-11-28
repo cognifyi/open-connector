@@ -45,6 +45,7 @@ export function createMcpRoutes({ services, outputMode, getPolicySnapshot }: Mcp
   app.post("/mcp", async (context) => {
     const { catalog, connections, actions } = await services.forTenant(readTenantId(context));
     if (!actions) throw new HttpRequestError("service_unavailable", "MCP execution is unavailable.", 503);
+    const runtimeGrant = readRuntimeGrant(context);
     const { handleMcpRequest } = await loadMcpModule();
     return await handleMcpRequest(context.req.raw, {
       catalog,
@@ -53,8 +54,8 @@ export function createMcpRoutes({ services, outputMode, getPolicySnapshot }: Mcp
       actionSearch: { get: () => catalog.getSearchIndex() },
       outputMode,
       getPolicySnapshot: () => getPolicySnapshot(context),
-      runtimeGrant: readRuntimeGrant(context),
-      ...readRunAuditContext(context.req.raw.headers, readRuntimeGrant(context)),
+      runtimeGrant,
+      ...readRunAuditContext(context.req.raw.headers, runtimeGrant),
       signal: context.req.raw.signal,
     });
   });

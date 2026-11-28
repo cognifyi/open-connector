@@ -140,6 +140,7 @@ describe("cloudflare worker", () => {
       DB: new EmptyMarketplaceD1Database(),
       TRANSIT_FILES: new UnusedR2Bucket(),
       ASSETS: assets,
+      OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS: "1",
     };
     const request = (): Request => new Request("https://catalog-retry.example.com/api/auth/session");
     const failures = await Promise.allSettled([
@@ -241,6 +242,7 @@ describe("cloudflare worker", () => {
       TRANSIT_FILES: namespace,
       TRANSIT_FILES_BACKEND: "kv",
       ASSETS: memoryAssets(chunkedCatalog()),
+      OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS: "1",
     };
 
     const form = new FormData();
@@ -276,6 +278,7 @@ describe("cloudflare worker", () => {
       TRANSIT_FILES: bucket,
       // TRANSIT_FILES_BACKEND intentionally omitted -> must fall back to R2.
       ASSETS: memoryAssets(chunkedCatalog()),
+      OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS: "1",
     };
 
     const form = new FormData();
@@ -308,6 +311,7 @@ function createEnv(): CloudflareEnv {
     DB: new EmptyMarketplaceD1Database(),
     TRANSIT_FILES: new UnusedR2Bucket(),
     ASSETS: memoryAssets(chunkedCatalog()),
+    OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS: "1",
   };
 }
 
