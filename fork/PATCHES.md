@@ -25,6 +25,8 @@ still apply cleanly or be recorded as dropped/upstreamed.
 | `api/rate-limit.ts` + `api/run-context.ts` hardening                        | Per-(tenant,token) 429 limiter on `/v1`+`/mcp`; strict `x-oc-run-id`/`traceparent` validation                    | active | — (limiter is upstreamable)                        |
 | `secrets/*-codec` fail-fast + `oauth/scope-policy.ts`                       | Encryption key required unless plaintext opt-in; `oc:*` scope→TokenPolicy compile; `*` connection wildcard       | active | encryption default upstreamable; scope syntax fork |
 
+| `src/grant/c16-policy.ts` + `c16-policy.test.ts` | C16 grant → TokenPolicy compile rules, ≥20 contract cases incl. cross-tenant/revoke/expiry | active | — (Hub-contract alignment, fork-side) |
+
 Fork-planned work packages (land as rows when merged):
 
 - OC-1 `src/tenant/` — tenant_id/subject/status/visibility across all stores
