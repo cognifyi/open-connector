@@ -209,6 +209,43 @@ export function tenantScopeTests(getDatabase: () => RuntimeDatabase): void {
     await expect(alpha.runLogStore.get("run-alpha")).resolves.toMatchObject({ id: "run-alpha" });
   });
 
+  it("round-trips audit columns and filters run logs by since", async () => {
+    const alpha = getDatabase().forTenant(ALPHA);
+    await alpha.runLogStore.add({
+      id: "run-audit-1",
+      service: "github",
+      actionId: "github.search",
+      caller: "http",
+      startedAt: "2026-06-30T00:00:00.000Z",
+      completedAt: "2026-06-30T00:00:01.000Z",
+      durationMs: 1000,
+      ok: true,
+      connectionId: "conn-1",
+      runtimeTokenId: "token-1",
+      runId: "caller-run-1",
+      traceId: "0af7651916cd43dd8448eb211c80319c",
+    });
+    await alpha.runLogStore.add({
+      id: "run-audit-2",
+      service: "github",
+      actionId: "github.search",
+      caller: "http",
+      startedAt: "2026-07-01T00:00:00.000Z",
+      completedAt: "2026-07-01T00:00:01.000Z",
+      durationMs: 1000,
+      ok: false,
+    });
+
+    await expect(alpha.runLogStore.get("run-audit-1")).resolves.toMatchObject({
+      runId: "caller-run-1",
+      traceId: "0af7651916cd43dd8448eb211c80319c",
+      runtimeTokenId: "token-1",
+      connectionId: "conn-1",
+    });
+    const page = await alpha.runLogStore.list({ since: "2026-07-01T00:00:00.000Z" });
+    expect(page.items.map((run) => run.id)).toEqual(["run-audit-2"]);
+  });
+
   it("scopes OAuth client configs and custom MCP catalogs per tenant", async () => {
     const alpha = getDatabase().forTenant(ALPHA);
     const beta = getDatabase().forTenant(BETA);

@@ -25,6 +25,8 @@ export interface IMcpServerOptions {
   outputMode?: McpOutputMode;
   getPolicySnapshot(): Promise<ActionPolicySnapshot>;
   runtimeGrant?: RuntimeGrant;
+  runId?: string;
+  traceId?: string;
   signal?: AbortSignal;
 }
 
@@ -398,6 +400,8 @@ async function executeAction(
     connectionName,
     policy,
     runtimeTokenId: options.runtimeGrant?.tokenId,
+    runId: options.runId,
+    traceId: options.traceId,
     signal: options.signal,
   });
   if (!run) {

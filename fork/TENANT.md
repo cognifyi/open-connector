@@ -158,6 +158,20 @@ configs, provider preferences, and the `forInstance()` escape hatch.
   and triggers were always deny-by-default; the flag makes the whole grant
   surface uniform. Deployment/runtime allowlists keep "empty = no
   constraint", and requests carrying no grant at all are unaffected.
+
+- Run audit rows are correlation-first since migration 0027: `runs` gains
+  `run_id`/`trace_id`/`grant_id`/`connection_id` columns plus a
+  `(tenant_id, started_at desc, id desc)` export index. HTTP and MCP
+  executions inherit `runId` from the grant envelope (the mint-time `runId`),
+  falling back to the `x-oc-run-id` request header; `traceId` parses the
+  trace-id segment of a W3C `traceparent` header, or is generated when the
+  caller sends none. `grantId` mirrors the authenticating grant id
+  (`runtimeTokenId`). Admins can stream the log as NDJSON via
+  `GET /api/runs/export?tenant=&since=&cursor=&limit=` — one `RunLog` JSON
+  object per line, `x-next-cursor` response header carries pagination, and
+  `since`/`limit`/`service`/`actionId`/`caller`/`ok` filters mirror
+  `GET /api/runs`. The export is per-tenant (`?tenant=` selects the stream);
+  there is no cross-tenant audit view.
   Hardened deployments must mint tokens with explicit policies — and note
   that both OAuth-AS-backed grants and JWT-derived grants still mint with
   empty allow-lists until the OC-4 scope→policy mapping lands, so they

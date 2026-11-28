@@ -72,6 +72,13 @@ function readRunLogListInput(context: Context): RunLogListQuery {
     }
     input.ok = ok === "true";
   }
+  const since = optionalString(context.req.query("since"));
+  if (since !== undefined) {
+    if (Number.isNaN(Date.parse(since))) {
+      return { ok: false, message: "since must be an ISO-8601 timestamp." };
+    }
+    input.since = new Date(since).toISOString();
+  }
 
   return { ok: true, input };
 }
@@ -92,6 +99,20 @@ export function createRunLogRoutes({ services }: RunLogRoutesOptions): Hono {
     }
 
     return context.json(await (await scoped(context)).listRuns(query.input));
+  });
+
+  app.get("/runs/export", async (context) => {
+    const query = readRunLogListInput(context);
+    if (!query.ok) {
+      return jsonError(context, 400, "invalid_input", query.message);
+    }
+    const page = await (await scoped(context)).listRuns(query.input);
+    const body = page.items.map((run) => JSON.stringify(run)).join("\n") + (page.items.length > 0 ? "\n" : "");
+    context.header("content-type", "application/x-ndjson; charset=utf-8");
+    if (page.nextCursor !== undefined) {
+      context.header("x-next-cursor", page.nextCursor);
+    }
+    return context.body(body);
   });
 
   app.get("/runs/:id", async (context) => {

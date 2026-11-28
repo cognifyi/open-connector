@@ -550,4 +550,53 @@ describe("tenant isolation (real service graph)", () => {
     expect(tokens[0].allowedConnections).toEqual([otherId]);
     expect((await appRequest(app, "/v1/actions", alphaToken)).status).toBe(200);
   });
+
+  it("streams run audit rows as NDJSON with grant-inherited run/trace ids", async () => {
+    const { app, call, mint } = await setup();
+    const minted = await call("/api/runtime-tokens?tenant=alpha", {
+      body: { name: "audited", ...TOKEN_POLICY, runId: "caller-run-alpha" },
+    });
+    expect(minted.status).toBe(200);
+    const { token } = (await minted.json()) as { token: string };
+    const beta = await mint("beta");
+
+    await appRequest(
+      app,
+      "/v1/actions/example.echo",
+      token,
+      { traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" },
+      { input: { marker: "audit-1" } },
+    );
+    await appRequest(
+      app,
+      "/v1/actions/example.echo",
+      beta,
+      { "x-oc-run-id": "beta-run" },
+      { input: { marker: "audit-2" } },
+    );
+
+    const alphaExport = await call("/api/runs/export?tenant=alpha");
+    expect(alphaExport.status).toBe(200);
+    expect(alphaExport.headers.get("content-type")).toContain("application/x-ndjson");
+    const lines = (await alphaExport.text()).trim().split("\n");
+    expect(lines).toHaveLength(1);
+    const row = JSON.parse(lines[0]);
+    expect(row).toMatchObject({
+      runId: "caller-run-alpha",
+      traceId: "4bf92f3577b34da6a3ce929d0e0e4736",
+      actionId: "example.echo",
+      caller: "http",
+    });
+    expect(row.grantId).toBeDefined();
+
+    const betaExport = await call("/api/runs/export?tenant=beta");
+    const betaRow = JSON.parse((await betaExport.text()).trim().split("\n")[0]);
+    expect(betaRow.runId).toBe("beta-run");
+    expect(betaRow.traceId).toMatch(/^[0-9a-f]{32}$/);
+
+    // `since` bounds the export window; no rows before the run started.
+    const empty = await call("/api/runs/export?tenant=alpha&since=2999-01-01T00:00:00.000Z");
+    expect(await empty.text()).toBe("");
+    expect(await (await call("/api/runs/export?tenant=alpha&since=not-a-date")).status).toBe(400);
+  });
 });
