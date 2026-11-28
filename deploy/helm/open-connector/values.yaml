@@ -197,6 +197,10 @@ secret:
     - s3SecretAccessKey
     - s3SessionToken
   annotations: {}
+  # AES key for stored credentials at rest. Leave empty for a stable
+  # auto-generated key (generated once on first install, reused on upgrade).
+  # Set it explicitly to pin the key (required when restoring a backup taken
+  # under a previous key). Ignored when `existingSecret` is set.
   encryptionKey: ""
   adminToken: ""
   runtimeToken: ""
