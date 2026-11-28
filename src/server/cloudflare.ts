@@ -231,6 +231,8 @@ function createCacheKey(env: CloudflareEnv, publicOrigin: string): string {
     transitFileMaxBytes: env.OOMOL_CONNECT_TRANSIT_FILE_MAX_BYTES ?? "",
     runLimit: env.OOMOL_CONNECT_RUN_LIMIT ?? "",
     oauthCloseDelaySeconds: env.OOMOL_CONNECT_OAUTH_CLOSE_DELAY_SECONDS ?? "",
+    requireExplicitPolicy: env.OOMOL_CONNECT_REQUIRE_EXPLICIT_POLICY ?? "",
+    disconnectTokenPolicy: env.OOMOL_CONNECT_DISCONNECT_TOKEN_POLICY ?? "",
   });
 }
 

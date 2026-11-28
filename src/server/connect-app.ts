@@ -156,12 +156,16 @@ export async function createConnectApp(options: ConnectAppOptions): Promise<Conn
         // minted on top of it); `prune` only drops the dead reference.
         const tokens = await database.runtimeTokenStore.findByAllowedConnection(stored.id);
         for (const token of tokens) {
-          if (options.disconnectTokenPolicy === "prune") {
+          // Pruning to an empty list would widen the grant to "any connection"
+          // (empty allowlist = unrestricted), so a fully-emptied token is
+          // revoked instead — it had no other connections to lose.
+          const remaining = (token.allowedConnections ?? []).filter((id) => id !== stored.id);
+          if (options.disconnectTokenPolicy === "prune" && remaining.length > 0) {
             await database.runtimeTokenStore.updatePolicy(token.id, {
               allowedActions: token.allowedActions,
               blockedActions: token.blockedActions,
               allowedProxies: token.allowedProxies,
-              allowedConnections: (token.allowedConnections ?? []).filter((id) => id !== stored.id),
+              allowedConnections: remaining,
               allowedTriggers: token.allowedTriggers,
             });
           } else {
