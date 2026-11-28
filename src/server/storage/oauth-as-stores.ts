@@ -109,6 +109,8 @@ export interface IOAuthTokenStore {
   listByClient(clientId: string): Promise<OAuthAccessTokenRecord[]>;
   /** Revoke all tokens for one client+grant (the minted RuntimeGrant). Returns count revoked. */
   revokeByGrant(clientId: string, runtimeTokenId: string): Promise<number>;
+  /** Revoke every token backed by `runtimeTokenId` across all clients. Returns count revoked. */
+  revokeByRuntimeToken(runtimeTokenId: string): Promise<number>;
   deleteExpired(nowMs: number): Promise<void>;
 }
 

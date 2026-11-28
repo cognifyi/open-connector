@@ -63,7 +63,7 @@ interface CallOptions {
   token?: string;
 }
 
-async function setup() {
+async function setup(options: { disconnectTokenPolicy?: "revoke" | "prune" } = {}) {
   const database = new SqliteRuntimeDatabase(":memory:");
   databases.push(database);
   const { app } = await createConnectApp({
@@ -89,6 +89,7 @@ async function setup() {
     configuredOrigin: "http://localhost",
     secretCodec: new PlainTextSecretCodec(),
     adminToken: ADMIN,
+    disconnectTokenPolicy: options.disconnectTokenPolicy,
     transitFiles: new TransitFileService({
       rootDir: ".tmp/tenant-isolation-tests",
       publicOrigin: "http://localhost",
@@ -488,5 +489,65 @@ describe("tenant isolation (real service graph)", () => {
     // a credential. Beta's run executes without ever seeing the connection.
     expect(alphaBody.data?.data?.credential).toBe("present");
     expect(betaBody.data?.data?.credential).toBe("absent");
+  });
+
+  it("revokes grants referencing a connection when it is disconnected", async () => {
+    const { app, call, database, mint } = await setup();
+    const created = await call("/api/connections/example?tenant=alpha", {
+      method: "PUT",
+      body: { authType: "api_key", values: { apiKey: "alpha-secret" } },
+    });
+    const connectionId = ((await created.json()) as { id: string }).id;
+    const alphaToken = await mint("alpha", "alpha-token", {
+      ...TOKEN_POLICY,
+      allowedConnections: [connectionId],
+    });
+    // Same-tenant token without the reference must survive the cascade.
+    await mint("alpha", "alpha-unrelated", { ...TOKEN_POLICY, allowedConnections: ["*"] });
+    await mint("beta", "beta-token", { ...TOKEN_POLICY, allowedConnections: [connectionId] });
+
+    // The grant works while the connection exists.
+    expect((await appRequest(app, "/v1/proxy/example", alphaToken, {}, { method: "GET", endpoint: "/s" })).status).toBe(
+      200,
+    );
+
+    const disconnected = await call("/api/connections/example?tenant=alpha", { method: "DELETE", body: {} });
+    expect(disconnected.status).toBe(200);
+
+    // The referencing grant is gone: the token no longer authenticates.
+    expect((await appRequest(app, "/v1/proxy/example", alphaToken, {}, { method: "GET", endpoint: "/s" })).status).toBe(
+      401,
+    );
+    const alpha = database.forTenant("alpha");
+    const beta = database.forTenant("beta");
+    expect(await alpha.runtimeTokenStore.findByAllowedConnection(connectionId)).toHaveLength(0);
+    // Beta's token survives — connection ids are unique, but even if a beta
+    // token listed the same id the cascade stays inside the tenant scope.
+    expect((await beta.runtimeTokenStore.list()).length).toBe(1);
+    expect((await alpha.runtimeTokenStore.list()).length).toBe(1);
+  });
+
+  it("prunes the connection from token allowlists when configured", async () => {
+    const { app, call, database, mint } = await setup({ disconnectTokenPolicy: "prune" });
+    const created = await call("/api/connections/example?tenant=alpha", {
+      method: "PUT",
+      body: { authType: "api_key", values: { apiKey: "alpha-secret" } },
+    });
+    const connectionId = ((await created.json()) as { id: string }).id;
+    const otherId = "00000000-0000-4000-8000-000000000000";
+    const alphaToken = await mint("alpha", "alpha-token", {
+      ...TOKEN_POLICY,
+      allowedConnections: [connectionId, otherId],
+    });
+
+    const disconnected = await call("/api/connections/example?tenant=alpha", { method: "DELETE", body: {} });
+    expect(disconnected.status).toBe(200);
+
+    // The grant survives minus the dead reference and still authenticates.
+    const alpha = database.forTenant("alpha");
+    const tokens = await alpha.runtimeTokenStore.list();
+    expect(tokens).toHaveLength(1);
+    expect(tokens[0].allowedConnections).toEqual([otherId]);
+    expect((await appRequest(app, "/v1/actions", alphaToken)).status).toBe(200);
   });
 });

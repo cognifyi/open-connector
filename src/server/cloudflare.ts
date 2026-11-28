@@ -21,6 +21,7 @@ import { preloadOptionalServerModules } from "./connect-server.ts";
 import { KVTransitFileService } from "./files/kv-transit-files.ts";
 import { R2TransitFileService } from "./files/r2-transit-files.ts";
 import { parseMcpOutputMode } from "./mcp-settings.ts";
+import { RuntimeMaintenance } from "./runtime-maintenance.ts";
 import { createWorkerSecretCodec } from "./secrets/worker-secret-codec.ts";
 import { D1RuntimeDatabase } from "./storage/d1/runtime-store.ts";
 import { DEFAULT_RUN_LIMIT } from "./storage/runtime-store.ts";
@@ -49,6 +50,13 @@ export default {
       requests: database.forInstance().connectionRequestStore,
       logger: workerLogger,
     });
+    const instanceView = database.forInstance();
+    const grantSweep = new RuntimeMaintenance({
+      tokens: instanceView.runtimeTokenStore,
+      oauthTokens: instanceView.oauthTokenStore,
+      oauthCodes: instanceView.oauthCodeStore,
+      logger: workerLogger,
+    });
     const triggerCleanup = async () => {
       if (!(await database.forInstance().triggerStore.listFlowTriggersForMaintenance(Date.now(), 1)).length) return;
       const origin = env.OOMOL_CONNECT_ORIGIN ?? "https://connector.invalid";
@@ -57,7 +65,7 @@ export default {
       );
       await triggerMaintenance.run();
     };
-    ctx.waitUntil(Promise.all([cleanup.run(), triggerCleanup()]).then(() => undefined));
+    ctx.waitUntil(Promise.all([cleanup.run(), triggerCleanup(), grantSweep.run()]).then(() => undefined));
   },
   async fetch(request: Request, env: CloudflareEnv, ctx: CloudflareExecutionContext): Promise<Response> {
     if (env.OAUTH_KV) {
@@ -144,7 +152,9 @@ async function createCloudflareApp(env: CloudflareEnv, publicOrigin: string): Pr
       blockedProxies: parseActionPolicyList(env.OOMOL_CONNECT_BLOCKED_PROXIES),
       allowedTriggers: parseActionPolicyList(env.OOMOL_CONNECT_ALLOWED_TRIGGERS),
       blockedTriggers: parseActionPolicyList(env.OOMOL_CONNECT_BLOCKED_TRIGGERS),
+      requireExplicitPolicy: env.OOMOL_CONNECT_REQUIRE_EXPLICIT_POLICY === "true",
     }),
+    disconnectTokenPolicy: env.OOMOL_CONNECT_DISCONNECT_TOKEN_POLICY === "prune" ? "prune" : undefined,
     allowedCustomOAuth: parseActionPolicyList(env.OOMOL_CONNECT_ALLOWED_CUSTOM_OAUTH),
     oauthResultOrigins: parseOAuthResultOrigins(env.OOMOL_CONNECT_OAUTH_RESULT_ORIGINS),
     logger: workerLogger,
@@ -221,6 +231,8 @@ function createCacheKey(env: CloudflareEnv, publicOrigin: string): string {
     transitFileMaxBytes: env.OOMOL_CONNECT_TRANSIT_FILE_MAX_BYTES ?? "",
     runLimit: env.OOMOL_CONNECT_RUN_LIMIT ?? "",
     oauthCloseDelaySeconds: env.OOMOL_CONNECT_OAUTH_CLOSE_DELAY_SECONDS ?? "",
+    requireExplicitPolicy: env.OOMOL_CONNECT_REQUIRE_EXPLICIT_POLICY ?? "",
+    disconnectTokenPolicy: env.OOMOL_CONNECT_DISCONNECT_TOKEN_POLICY ?? "",
   });
 }
 

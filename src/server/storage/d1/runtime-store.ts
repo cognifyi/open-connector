@@ -345,6 +345,24 @@ export class D1RuntimeTokenStore implements IRuntimeTokenStore {
     return row ? readRuntimeTokenRow(row) : undefined;
   }
 
+  async findByAllowedConnection(connectionId: string): Promise<RuntimeTokenRecord[]> {
+    // Quoted LIKE inside the JSON array is exact for uuid-shaped connection ids
+    // and needs no dialect-specific json function.
+    const pattern = `%"${connectionId}"%`;
+    const result = await this.database
+      .prepare(
+        `
+        select tenant_id, ${runtimeTokenColumns}
+        from runtime_tokens
+        where allowed_connections like ? and ${tenantPredicate(this.scope).sql}
+        order by created_at desc, id desc
+      `,
+      )
+      .bind(pattern, ...tenantPredicate(this.scope).values)
+      .all<RuntimeRow>();
+    return result.results.map(readRuntimeTokenRow);
+  }
+
   async updatePolicy(id: string, policy: TokenPolicy): Promise<RuntimeTokenRecord | undefined> {
     const row = await this.database
       .prepare(
@@ -383,6 +401,14 @@ export class D1RuntimeTokenStore implements IRuntimeTokenStore {
       .prepare(`update runtime_tokens set last_used_at = ? where id = ? and ${t.sql}`)
       .bind(usedAt, id, ...t.values)
       .run();
+  }
+  async deleteExpired(nowIso: string): Promise<number> {
+    const t = tenantPredicate(this.scope);
+    const result = await this.database
+      .prepare(`delete from runtime_tokens where expires_at is not null and expires_at <= ? and ${t.sql}`)
+      .bind(nowIso, ...t.values)
+      .run();
+    return result.meta.changes ?? 0;
   }
 }
 
@@ -678,6 +704,20 @@ export class D1OAuthTokenStore implements IOAuthTokenStore {
       `,
       )
       .bind(Date.now(), clientId, runtimeTokenId, ...tenantPredicate(this.scope).values)
+      .run();
+    return result.meta.changes ?? 0;
+  }
+
+  async revokeByRuntimeToken(runtimeTokenId: string): Promise<number> {
+    const result = await this.database
+      .prepare(
+        `
+        update oauth_tokens
+        set revoked_at = ?
+        where runtime_token_id = ? and revoked_at is null and ${tenantPredicate(this.scope).sql}
+      `,
+      )
+      .bind(Date.now(), runtimeTokenId, ...tenantPredicate(this.scope).values)
       .run();
     return result.meta.changes ?? 0;
   }

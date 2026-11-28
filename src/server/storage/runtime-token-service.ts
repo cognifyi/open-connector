@@ -70,9 +70,13 @@ export interface IRuntimeTokenStore {
   list(): Promise<RuntimeTokenRecord[]>;
   findByHash(tokenHash: string): Promise<RuntimeTokenRecord | undefined>;
   findById(id: string): Promise<RuntimeTokenRecord | undefined>;
+  /** Tokens whose `allowedConnections` list mentions `connectionId`; used by the disconnect cascade. */
+  findByAllowedConnection(connectionId: string): Promise<RuntimeTokenRecord[]>;
   updatePolicy(id: string, policy: TokenPolicy): Promise<RuntimeTokenRecord | undefined>;
   revoke(id: string): Promise<boolean>;
   markUsed(id: string, usedAt: string): Promise<void>;
+  /** Hard-delete rows whose `expires_at` has passed. Returns the deleted count. */
+  deleteExpired(nowIso: string): Promise<number>;
 }
 
 const tokenPrefix = "oct_";
@@ -110,6 +114,9 @@ export class RuntimeTokenService {
     if (envelope.expiresAt !== undefined && Number.isNaN(Date.parse(envelope.expiresAt))) {
       throw new Error("expiresAt must be an ISO-8601 instant string.");
     }
+    // Store the canonical ISO instant: `expires_at <= ?` is a text compare,
+    // so a valid-but-offset form like "+02:00" would mis-order.
+    const expiresAt = envelope.expiresAt === undefined ? undefined : new Date(envelope.expiresAt).toISOString();
     const token = `${tokenPrefix}${randomBytes(32).toString("base64url")}`;
     const now = new Date().toISOString();
     const record: RuntimeTokenRecord = {
@@ -123,7 +130,7 @@ export class RuntimeTokenService {
       allowedConnections: policy.allowedConnections ?? [],
       allowedTriggers: policy.allowedTriggers ?? [],
       createdAt: now,
-      expiresAt: envelope.expiresAt,
+      expiresAt,
       runId: envelope.runId,
       audience: envelope.audience,
     };

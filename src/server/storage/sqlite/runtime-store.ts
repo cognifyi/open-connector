@@ -512,6 +512,23 @@ export class SqliteRuntimeTokenStore implements IRuntimeTokenStore {
     return row ? readRuntimeTokenRow(row) : undefined;
   }
 
+  async findByAllowedConnection(connectionId: string): Promise<RuntimeTokenRecord[]> {
+    // Connection ids are uuid-shaped (hex + dash): a quoted LIKE match inside
+    // the JSON array is exact and needs no dialect-specific json function.
+    const pattern = `%"${connectionId}"%`;
+    return this.database
+      .prepare(
+        `
+        select tenant_id, ${runtimeTokenColumns}
+        from runtime_tokens
+        where allowed_connections like ? and ${tenantPredicate(this.scope).sql}
+        order by created_at desc, id desc
+      `,
+      )
+      .all(pattern, ...tenantPredicate(this.scope).values)
+      .map(readRuntimeTokenRow);
+  }
+
   async updatePolicy(id: string, policy: TokenPolicy): Promise<RuntimeTokenRecord | undefined> {
     const row = this.database
       .prepare(
@@ -545,6 +562,14 @@ export class SqliteRuntimeTokenStore implements IRuntimeTokenStore {
       `update runtime_tokens set last_used_at = ? where id = ? and ${tenantPredicate(this.scope).sql}`,
     );
     this.markUsedStatement.run(usedAt, id, ...tenantPredicate(this.scope).values);
+  }
+
+  async deleteExpired(nowIso: string): Promise<number> {
+    const t = tenantPredicate(this.scope);
+    const result = this.database
+      .prepare(`delete from runtime_tokens where expires_at is not null and expires_at <= ? and ${t.sql}`)
+      .run(nowIso, ...t.values);
+    return Number(result.changes);
   }
 }
 
@@ -809,6 +834,19 @@ export class SqliteOAuthTokenStore implements IOAuthTokenStore {
       `,
       )
       .run(Date.now(), clientId, runtimeTokenId, ...tenantPredicate(this.scope).values);
+    return Number(result.changes);
+  }
+
+  async revokeByRuntimeToken(runtimeTokenId: string): Promise<number> {
+    const result = this.database
+      .prepare(
+        `
+        update oauth_tokens
+        set revoked_at = ?
+        where runtime_token_id = ? and revoked_at is null and ${tenantPredicate(this.scope).sql}
+      `,
+      )
+      .run(Date.now(), runtimeTokenId, ...tenantPredicate(this.scope).values);
     return Number(result.changes);
   }
 

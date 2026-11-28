@@ -56,6 +56,13 @@ export interface ActionPolicyConfig {
   blockedProxies?: string[];
   allowedTriggers?: string[];
   blockedTriggers?: string[];
+  /**
+   * Hardened mode (`OOMOL_CONNECT_REQUIRE_EXPLICIT_POLICY`): an empty
+   * `allowedActions`/`allowedConnections` list on a token grants nothing
+   * instead of everything. Token proxies and triggers are already
+   * deny-by-default; this flag makes actions and connections match.
+   */
+  requireExplicitPolicy?: boolean;
 }
 
 interface CompiledRule {
@@ -83,8 +90,18 @@ export class ActionPolicySnapshot {
   private readonly tokenProxyRules?: CompiledRule[];
   private readonly tokenTriggerRules?: CompiledRule[];
   private readonly allowedConnections: readonly string[];
+  private readonly requireExplicitPolicy: boolean;
+  private readonly hasToken: boolean;
 
-  constructor(deployment: PolicyRules, runtime: PolicyRules, token?: TokenPolicy, updatedAt?: string) {
+  constructor(
+    deployment: PolicyRules,
+    runtime: PolicyRules,
+    token?: TokenPolicy,
+    updatedAt?: string,
+    requireExplicitPolicy = false,
+  ) {
+    this.requireExplicitPolicy = requireExplicitPolicy;
+    this.hasToken = token !== undefined;
     const deploymentRules = immutablePolicyRules(deployment);
     const runtimeRules = immutablePolicyRules(runtime);
     this.state = Object.freeze({ deployment: deploymentRules, runtime: runtimeRules, updatedAt });
@@ -121,6 +138,14 @@ export class ActionPolicySnapshot {
     const checks: PolicyCheck[] = [];
     for (const layer of this.layers) {
       if (layer.allowedActions.length === 0) {
+        if (this.requireExplicitPolicy && this.hasToken && layer.source === "token") {
+          return {
+            allowed: false,
+            code: "action_not_allowed",
+            message: `${action.id} is not granted: the runtime token has no explicit action policy.`,
+            checks: [...checks, { source: "token", outcome: "allow_miss" }],
+          };
+        }
         continue;
       }
       const allowed = layer.allowedActions.find((rule) => rule.matches(action.id));
@@ -225,6 +250,16 @@ export class ActionPolicySnapshot {
 
   evaluateConnection(connectionId?: string): ActionPolicyDecision {
     if (this.allowedConnections.length === 0) {
+      if (this.requireExplicitPolicy && this.hasToken) {
+        return {
+          allowed: false,
+          code: "connection_not_allowed",
+          message: connectionId
+            ? `${connectionId} connection is not granted: the runtime token has no explicit connection policy.`
+            : "The selected connection is not granted: the runtime token has no explicit connection policy.",
+          checks: [{ source: "token", outcome: "allow_miss" }],
+        };
+      }
       return { allowed: true, checks: [] };
     }
 
@@ -251,9 +286,11 @@ export class ActionPolicySnapshot {
  */
 export class ActionPolicyService {
   readonly rules: PolicyRules;
+  readonly requireExplicitPolicy: boolean;
 
   constructor(config: ActionPolicyConfig = {}) {
     this.rules = policyRules(config);
+    this.requireExplicitPolicy = config.requireExplicitPolicy === true;
   }
 
   createSnapshot(
@@ -261,7 +298,7 @@ export class ActionPolicyService {
     token?: TokenPolicy,
     updatedAt?: string,
   ): ActionPolicySnapshot {
-    return new ActionPolicySnapshot(this.rules, runtime, token, updatedAt);
+    return new ActionPolicySnapshot(this.rules, runtime, token, updatedAt, this.requireExplicitPolicy);
   }
 }
 

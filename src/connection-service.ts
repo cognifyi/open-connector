@@ -87,6 +87,13 @@ export interface ConnectionServiceOptions {
   marketplace?: MarketplaceService;
   /** Runs after local credentials have been saved. */
   onConnected?: (summary: ConnectionSummary, credential: ResolvedCredential) => Promise<void>;
+  /**
+   * Runs after a connection row has been deleted, before the provider-side
+   * grant is revoked. Used to cascade the disconnect into locally minted
+   * grants (runtime tokens whose allowlist references the connection).
+   * Best-effort: failures are logged, they do not undo the delete.
+   */
+  onDisconnected?: (stored: StoredConnection) => Promise<void>;
 }
 
 export interface DisconnectOptions {
@@ -165,12 +172,14 @@ export class ConnectionService {
   private readonly logger?: RuntimeLogger;
   private readonly marketplace?: MarketplaceService;
   private readonly onConnected?: ConnectionServiceOptions["onConnected"];
+  private readonly onDisconnected?: ConnectionServiceOptions["onDisconnected"];
 
   constructor(input: ConnectionServiceOptions) {
     this.providerHttpDispatch = input.providerHttpDispatch;
     this.catalog = input.catalog;
     this.oauthCredentials = input.oauthCredentials;
     this.providerLoader = input.providerLoader;
+    this.onDisconnected = input.onDisconnected;
     this.store = input.store;
     this.credentials = new CredentialResolver(input);
     this.logger = input.logger;
@@ -583,15 +592,16 @@ export class ConnectionService {
     const connectionName = normalizeConnectionName(connectionNameInput);
     // The credential is read before the delete and revoked after it: a delete the store
     // refuses (a row bound to active Trigger subscriptions) then ends nothing at the provider,
-    // where revoking first would leave a dead grant behind a row that stays.
+    // where revoking first would leave a dead grant behind a row that stays. The row is read
+    // even when provider revocation is skipped because the disconnect cascade needs its id.
     let stored: StoredConnection | undefined;
-    if (options.revoke === true) {
-      try {
-        stored = await this.store.get(service, connectionName);
-      } catch (error) {
+    try {
+      stored = await this.store.get(service, connectionName);
+    } catch (error) {
+      if (options.revoke === true) {
         this.logger?.warn({ service, connectionName, error: describeError(error) }, "oauth token revocation skipped");
-        throw error;
       }
+      throw error;
     }
     return this.credentials.withDisconnect(stored?.id, async () => {
       if (stored && stored.source !== "saas" && stored.credential.authType === "oauth2") {
@@ -615,6 +625,16 @@ export class ConnectionService {
         }
       }
       await this.store.delete(service, connectionName, stored);
+      if (stored && this.onDisconnected) {
+        try {
+          await this.onDisconnected(stored);
+        } catch (error) {
+          this.logger?.warn(
+            { service, connectionName, error: describeError(error), errorCode: "disconnect_cascade_failed" },
+            "disconnect grant cascade failed; stale allowlist references may remain",
+          );
+        }
+      }
       const revoked =
         options.revoke !== true ? "skipped" : await this.revokeDeletedCredential(service, connectionName, stored);
       const provider = this.catalog.providers.find((provider) => provider.service === service);

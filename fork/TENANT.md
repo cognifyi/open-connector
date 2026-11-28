@@ -137,6 +137,31 @@ configs, provider preferences, and the `forInstance()` escape hatch.
   `expiresAt`/`runId`/`audience {type,id,onBehalfOf?}`; `resolveToken`
   fails closed once `expires_at` passes; both fields ride the `RuntimeGrant`
   so run/audit wiring (OC-3) and audience checks (OC-5) can consume them.
+- Grant hygiene runs on two paths: `resolveToken` rejects expired grants
+  immediately, and `RuntimeMaintenance` (60s tick on Node, `scheduled` on
+  Workers) hard-deletes expired `runtime_tokens`/`oauth_tokens`/
+  `oauth_authorization_codes` rows across every tenant via the instance view.
+  OAuth-AS backing grants are minted with `expires_at` = the refresh (or
+  access, without `offline_access`) horizon, so the sweep bounds them too.
+- Disconnecting a connection cascades into locally minted grants: every
+  runtime token whose `allowedConnections` lists the deleted connection id
+  is revoked (default) or pruned, chosen by
+  `OOMOL_CONNECT_DISCONNECT_TOKEN_POLICY=revoke|prune`. A `prune` that
+  would empty the list falls back to revoke — an empty allowlist means
+  "any connection", so pruning the last id would widen the grant. Revocation also
+  stamps `revoked_at` on OAuth access/refresh tokens minted on top of the
+  grant (`revokeByRuntimeToken`). The cascade is tenant-scoped — the stores
+  it runs through belong to the disconnecting request's tenant view.
+- `OOMOL_CONNECT_REQUIRE_EXPLICIT_POLICY=true` flips token policy to
+  deny-by-default for actions and connections (an empty `allowedActions`
+  or `allowedConnections` on a token then grants nothing). Token proxies
+  and triggers were always deny-by-default; the flag makes the whole grant
+  surface uniform. Deployment/runtime allowlists keep "empty = no
+  constraint", and requests carrying no grant at all are unaffected.
+  Hardened deployments must mint tokens with explicit policies — and note
+  that both OAuth-AS-backed grants and JWT-derived grants still mint with
+  empty allow-lists until the OC-4 scope→policy mapping lands, so they
+  deny everything under the flag.
 - `service:admin` lookups widen to the legacy `local-admin` owner
   (`ownerAliases`): pre-OC-1 `connection_requests` rows remain reachable
   through the canonical subject, and supersession/cancel/claim match both

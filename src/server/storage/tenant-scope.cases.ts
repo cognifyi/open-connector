@@ -128,6 +128,68 @@ export function tenantScopeTests(getDatabase: () => RuntimeDatabase): void {
     });
   });
 
+  it("finds tokens by allowed connection and sweeps expired grants per tenant", async () => {
+    const alpha = getDatabase().forTenant(ALPHA);
+    const beta = getDatabase().forTenant(BETA);
+    await alpha.runtimeTokenStore.add({
+      id: "alpha-token-conn",
+      name: "Alpha connection-scoped token",
+      tenantId: ALPHA,
+      tokenHash: "alpha-conn-hash",
+      allowedActions: [],
+      blockedActions: [],
+      allowedProxies: [],
+      allowedConnections: ["conn-1", "conn-2"],
+      allowedTriggers: [],
+      createdAt: new Date().toISOString(),
+    });
+    await alpha.runtimeTokenStore.add({
+      id: "alpha-token-expired",
+      name: "Alpha expired token",
+      tenantId: ALPHA,
+      tokenHash: "alpha-expired-hash",
+      allowedActions: [],
+      blockedActions: [],
+      allowedProxies: [],
+      allowedConnections: [],
+      allowedTriggers: [],
+      createdAt: new Date().toISOString(),
+      expiresAt: "2000-01-01T00:00:00.000Z",
+    });
+    // A token with the same allowlist contents in another tenant must not
+    // leak into alpha's cascade lookups.
+    await beta.runtimeTokenStore.add({
+      id: "beta-token-conn",
+      name: "Beta connection-scoped token",
+      tenantId: BETA,
+      tokenHash: "beta-conn-hash",
+      allowedActions: [],
+      blockedActions: [],
+      allowedProxies: [],
+      allowedConnections: ["conn-1"],
+      allowedTriggers: [],
+      createdAt: new Date().toISOString(),
+    });
+
+    await expect(alpha.runtimeTokenStore.findByAllowedConnection("conn-1")).resolves.toMatchObject([
+      { id: "alpha-token-conn" },
+    ]);
+    await expect(alpha.runtimeTokenStore.findByAllowedConnection("conn-2")).resolves.toMatchObject([
+      { id: "alpha-token-conn" },
+    ]);
+    expect(await alpha.runtimeTokenStore.findByAllowedConnection("conn-3")).toHaveLength(0);
+    await expect(beta.runtimeTokenStore.findByAllowedConnection("conn-1")).resolves.toMatchObject([
+      { id: "beta-token-conn" },
+    ]);
+
+    // Sweeping expired rows inside one tenant leaves the other tenant's
+    // rows and alpha's live tokens untouched.
+    await expect(alpha.runtimeTokenStore.deleteExpired(new Date().toISOString())).resolves.toBe(1);
+    expect(await alpha.runtimeTokenStore.findById("alpha-token-expired")).toBeUndefined();
+    await expect(alpha.runtimeTokenStore.findById("alpha-token-conn")).resolves.toBeDefined();
+    await expect(beta.runtimeTokenStore.findById("beta-token-conn")).resolves.toBeDefined();
+  });
+
   it("scopes run logs per tenant", async () => {
     const alpha = getDatabase().forTenant(ALPHA);
     const beta = getDatabase().forTenant(BETA);
@@ -206,9 +268,30 @@ export function tenantScopeTests(getDatabase: () => RuntimeDatabase): void {
       issuedAt: new Date().toISOString(),
       expiresAt: Date.now() + 60_000,
     });
+    await alpha.oauthTokenStore.add({
+      tenantId: "local",
+      tokenHash: "alpha-access-hash-2",
+      clientId: "other-client",
+      runtimeTokenId: "token",
+      scope: "read",
+      issuedAt: new Date().toISOString(),
+      expiresAt: Date.now() + 60_000,
+    });
     await expect(beta.oauthTokenStore.findByAccessTokenHash("alpha-access-hash")).resolves.toBeUndefined();
     await expect(alpha.oauthTokenStore.findByAccessTokenHash("alpha-access-hash")).resolves.toMatchObject({
       tokenHash: "alpha-access-hash",
+    });
+
+    // Cascade revocation ends every client's tokens backed by the grant,
+    // stays inside the tenant, and is idempotent.
+    await expect(beta.oauthTokenStore.revokeByRuntimeToken("token")).resolves.toBe(0);
+    await expect(alpha.oauthTokenStore.revokeByRuntimeToken("token")).resolves.toBe(2);
+    await expect(alpha.oauthTokenStore.revokeByRuntimeToken("token")).resolves.toBe(0);
+    await expect(alpha.oauthTokenStore.findByAccessTokenHash("alpha-access-hash")).resolves.toMatchObject({
+      revokedAt: expect.any(Number),
+    });
+    await expect(alpha.oauthTokenStore.findByAccessTokenHash("alpha-access-hash-2")).resolves.toMatchObject({
+      revokedAt: expect.any(Number),
     });
   });
 

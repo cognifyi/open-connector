@@ -534,6 +534,22 @@ class PostgresRuntimeTokenStore implements IRuntimeTokenStore {
     return row ? readRuntimeTokenRow(row) : undefined;
   }
 
+  async findByAllowedConnection(connectionId: string): Promise<RuntimeTokenRecord[]> {
+    // Quoted LIKE inside the JSON array is exact for uuid-shaped connection ids
+    // and needs no dialect-specific json function.
+    const pattern = `%"${connectionId}"%`;
+    const result = await this.pool.query<RuntimeRow>(
+      `
+        select tenant_id, ${runtimeTokenColumns}
+        from runtime_tokens
+        where allowed_connections like $1 and ${tenantPredicatePg(this.scope, 2).sql}
+        order by created_at desc, id desc
+      `,
+      [pattern, ...tenantPredicatePg(this.scope, 2).values],
+    );
+    return result.rows.map(readRuntimeTokenRow);
+  }
+
   async updatePolicy(id: string, policy: TokenPolicy): Promise<RuntimeTokenRecord | undefined> {
     const result = await this.pool.query<RuntimeRow>(
       `
@@ -569,6 +585,14 @@ class PostgresRuntimeTokenStore implements IRuntimeTokenStore {
       id,
       ...t.values,
     ]);
+  }
+  async deleteExpired(nowIso: string): Promise<number> {
+    const t = tenantPredicatePg(this.scope, 2);
+    const result = await this.pool.query(
+      `delete from runtime_tokens where expires_at is not null and expires_at <= $1 and ${t.sql}`,
+      [nowIso, ...t.values],
+    );
+    return result.rowCount ?? 0;
   }
 }
 
@@ -851,6 +875,18 @@ class PostgresOAuthTokenStore implements IOAuthTokenStore {
         where client_id = $2 and runtime_token_id = $3 and revoked_at is null and ${tenantPredicatePg(this.scope, 4).sql}
       `,
       [Date.now(), clientId, runtimeTokenId, ...tenantPredicatePg(this.scope, 4).values],
+    );
+    return result.rowCount ?? 0;
+  }
+
+  async revokeByRuntimeToken(runtimeTokenId: string): Promise<number> {
+    const result = await this.pool.query(
+      `
+        update oauth_tokens
+        set revoked_at = $1
+        where runtime_token_id = $2 and revoked_at is null and ${tenantPredicatePg(this.scope, 3).sql}
+      `,
+      [Date.now(), runtimeTokenId, ...tenantPredicatePg(this.scope, 3).values],
     );
     return result.rowCount ?? 0;
   }

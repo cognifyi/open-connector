@@ -133,13 +133,18 @@ export function createMcpOAuthHandler(origin: string, runtime: RuntimeHandler): 
           const approved = await oauth.approveConsent(request, handle, { scope: [...grantedScopes] });
           const client = await oauth.describeConsent(approved.request);
           const tokens = runtimeTokens(env);
-          const backing = await tokens.createToken(`MCP OAuth • ${client.clientName.slice(0, 120)}`, {
-            allowedActions: [],
-            blockedActions: [],
-            allowedProxies: [],
-            allowedConnections: [],
-            allowedTriggers: [],
-          });
+          // The backing grant cannot outlive the refresh chain (30d) it funds.
+          const backing = await tokens.createToken(
+            `MCP OAuth • ${client.clientName.slice(0, 120)}`,
+            {
+              allowedActions: [],
+              blockedActions: [],
+              allowedProxies: [],
+              allowedConnections: [],
+              allowedTriggers: [],
+            },
+            { expiresAt: new Date(Date.now() + options.refreshTokenTTL! * 1000).toISOString() },
+          );
           try {
             const authorization = await oauth.completeAuthorization({
               request: approved.request,

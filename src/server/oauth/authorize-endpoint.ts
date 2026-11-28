@@ -18,7 +18,7 @@ import { constantTimeEqual } from "../api/auth-utils.ts";
 import { renderMcpConsentPage } from "../cloudflare/mcp-consent-page.ts";
 import { CimdError } from "./cimd-client.ts";
 import { redirectUriMatches } from "./client-metadata.ts";
-import { accessScope, parseScope } from "./config.ts";
+import { accessScope, offlineAccessScope, parseScope } from "./config.ts";
 import { hashToken, randomToken } from "./jwks.ts";
 import { isValidCodeChallenge } from "./pkce.ts";
 
@@ -384,13 +384,23 @@ export async function handleAuthorizePost(context: Context, deps: AuthorizeDepen
     const tenant = readTenantId(context);
     const scoped = deps.runtimeDatabase.forTenant(tenant);
     const runtimeTokens = new RuntimeTokenService(scoped.runtimeTokenStore, undefined, tenant);
-    const backing = await runtimeTokens.createToken(`MCP OAuth • ${current.clientName.slice(0, 120)}`, {
-      allowedActions: [],
-      blockedActions: [],
-      allowedProxies: [],
-      allowedConnections: [],
-      allowedTriggers: [],
-    });
+    // Bound the backing grant to the OAuth chain's max lifetime: the refresh
+    // window when the client requested offline_access, the access window
+    // otherwise. Expired backing rows are swept by RuntimeMaintenance.
+    const backingTtlSeconds = request.scope.includes(offlineAccessScope)
+      ? deps.config.refreshTokenTtlSeconds
+      : deps.config.accessTokenTtlSeconds;
+    const backing = await runtimeTokens.createToken(
+      `MCP OAuth • ${current.clientName.slice(0, 120)}`,
+      {
+        allowedActions: [],
+        blockedActions: [],
+        allowedProxies: [],
+        allowedConnections: [],
+        allowedTriggers: [],
+      },
+      { expiresAt: new Date(Date.now() + backingTtlSeconds * 1000).toISOString() },
+    );
     const code = randomToken(32);
     try {
       await scoped.oauthCodeStore.add({

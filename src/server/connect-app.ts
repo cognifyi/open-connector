@@ -38,6 +38,7 @@ import { protectedResourceChallenge } from "./oauth/as-metadata.ts";
 import { resolveOAuthServerConfig } from "./oauth/config.ts";
 import { resolveOAuthAccessToken } from "./oauth/token-endpoint.ts";
 import { ProxyRunner } from "./proxy/proxy-runner.ts";
+import { RuntimeMaintenance } from "./runtime-maintenance.ts";
 import { RuntimeTokenService } from "./storage/runtime-token-service.ts";
 
 export interface ConnectAppOptions {
@@ -75,11 +76,19 @@ export interface ConnectAppOptions {
   mcpOutputMode?: McpOutputMode;
   oauthCloseDelaySeconds?: number;
   oauthResultOrigins?: string[];
+  /**
+   * What disconnecting a connection does to runtime tokens whose
+   * `allowedConnections` lists reference it: `revoke` (default, deletes the
+   * grant and revokes OAuth tokens minted on top of it) or `prune` (drops
+   * just the connection from each allowlist).
+   */
+  disconnectTokenPolicy?: "revoke" | "prune";
 }
 
 export interface ConnectApp {
   saasCleanup: SaasCleanupService;
   triggerMaintenance: TriggerMaintenance;
+  runtimeMaintenance: RuntimeMaintenance;
   app: Hono;
   runtimeAuthConfigured: boolean;
 }
@@ -141,6 +150,30 @@ export async function createConnectApp(options: ConnectAppOptions): Promise<Conn
     });
     const connections = new ConnectionService({
       onConnected: (summary, credential) => customMcp.connectionSaved(summary, credential),
+      onDisconnected: async (stored) => {
+        // The connection is gone; grants that listed it must not pretend it
+        // still resolves. `revoke` ends the whole grant (plus OAuth tokens
+        // minted on top of it); `prune` only drops the dead reference.
+        const tokens = await database.runtimeTokenStore.findByAllowedConnection(stored.id);
+        for (const token of tokens) {
+          // Pruning to an empty list would widen the grant to "any connection"
+          // (empty allowlist = unrestricted), so a fully-emptied token is
+          // revoked instead — it had no other connections to lose.
+          const remaining = (token.allowedConnections ?? []).filter((id) => id !== stored.id);
+          if (options.disconnectTokenPolicy === "prune" && remaining.length > 0) {
+            await database.runtimeTokenStore.updatePolicy(token.id, {
+              allowedActions: token.allowedActions,
+              blockedActions: token.blockedActions,
+              allowedProxies: token.allowedProxies,
+              allowedConnections: remaining,
+              allowedTriggers: token.allowedTriggers,
+            });
+          } else {
+            await database.runtimeTokenStore.revoke(token.id);
+            await database.oauthTokenStore.revokeByRuntimeToken(token.id);
+          }
+        }
+      },
       providerHttpDispatch: options.providerHttpDispatch,
       catalog,
       oauthCredentials: new OAuthCredentialRefreshService(oauthClientConfigs, providerLoader),
@@ -280,6 +313,14 @@ export async function createConnectApp(options: ConnectAppOptions): Promise<Conn
     : undefined;
   return {
     triggerMaintenance,
+    // Expired grants are rejected at read time; this sweep keeps the backing
+    // tables bounded. Instance scope — every tenant's rows are swept.
+    runtimeMaintenance: new RuntimeMaintenance({
+      tokens: instanceDatabase.runtimeTokenStore,
+      oauthTokens: instanceDatabase.oauthTokenStore,
+      oauthCodes: instanceDatabase.oauthCodeStore,
+      logger: options.logger,
+    }),
     saasCleanup: new SaasCleanupService({
       network,
       providerHttpDispatch: options.providerHttpDispatch,
