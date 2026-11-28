@@ -1,6 +1,6 @@
 # Configuration
 
-Managed provider actions can be configured through the [Connector Marketplace](marketplace.md). Marketplace API keys use the same optional `OOMOL_CONNECT_ENCRYPTION_KEY` protection as other stored credentials.
+Managed provider actions can be configured through the [Connector Marketplace](marketplace.md). Marketplace API keys use the same `OOMOL_CONNECT_ENCRYPTION_KEY` protection as other stored credentials (required at startup).
 
 [Custom MCP services](custom-mcp.md) are managed in the Console and stored in the runtime database.
 

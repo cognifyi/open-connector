@@ -19,7 +19,7 @@ describe("rate limit middleware", () => {
     const limited = await app.request("/v1/ping");
     expect(limited.status).toBe(429);
     expect(Number(limited.headers.get("retry-after"))).toBeGreaterThan(0);
-    expect(await limited.json()).toMatchObject({ error: { code: "rate_limited" } });
+    expect(await limited.json()).toMatchObject({ success: false, errorCode: "rate_limited" });
   });
 
   it("does not throttle other paths or a disabled limit", async () => {

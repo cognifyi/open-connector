@@ -176,7 +176,7 @@ startup. SQLite remains the default when `OOMOL_CONNECT_DATABASE_URL` is unset; 
 not synchronized.
 
 Set `OOMOL_CONNECT_ENCRYPTION_KEY` to encrypt stored credentials, OAuth client configuration, and
-completed idempotent Action responses:
+completed idempotent Action responses (required unless `OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS=1` for local development):
 
 ```bash
 OOMOL_CONNECT_ENCRYPTION_KEY="replace-with-a-long-random-secret" npm run dev

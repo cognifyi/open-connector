@@ -15,6 +15,7 @@ import { registerStaticRoutes } from "./api/static-routes.ts";
 import { createConnectorRuntime } from "./connector-runtime.ts";
 import { logger } from "./logger.ts";
 import { parseMcpOutputMode } from "./mcp-settings.ts";
+import { parsePlaintextSecretsFlag } from "./secrets/secret-codec.ts";
 import { resolveServerAssets } from "./server-assets.ts";
 import { createDirectoryMigrationSource } from "./storage/migration-source.ts";
 import { migratePostgresRuntimeDatabase, sqliteMigrationsNotice } from "./storage/node-runtime-database.ts";
@@ -76,7 +77,7 @@ async function main(): Promise<void> {
     publicOriginConfigured: Boolean(process.env.OOMOL_CONNECT_ORIGIN),
     assets,
     encryptionKey: process.env.OOMOL_CONNECT_ENCRYPTION_KEY,
-    allowPlaintextSecrets: parseOptionalBooleanFlag(process.env.OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS),
+    allowPlaintextSecrets: parsePlaintextSecretsFlag(process.env.OOMOL_CONNECT_ALLOW_PLAINTEXT_SECRETS),
     adminToken: optionalEnv("OOMOL_CONNECT_ADMIN_TOKEN"),
     runtimeToken: optionalEnv("OOMOL_CONNECT_RUNTIME_TOKEN"),
     authMode: parseAuthModeEnv(process.env.OOMOL_CONNECT_OAUTH_AUTH_MODE),
@@ -105,7 +106,7 @@ async function main(): Promise<void> {
     },
     disconnectTokenPolicy: process.env.OOMOL_CONNECT_DISCONNECT_TOKEN_POLICY === "prune" ? "prune" : undefined,
     rateLimit: {
-      rpm: readPositiveIntegerEnv("OOMOL_CONNECT_RATE_LIMIT_RPM", 60),
+      rpm: readRateLimitEnv("OOMOL_CONNECT_RATE_LIMIT_RPM", 60),
       burst: readPositiveIntegerEnv("OOMOL_CONNECT_RATE_LIMIT_BURST", 300),
     },
     allowedCustomOAuth: parseActionPolicyList(process.env.OOMOL_CONNECT_ALLOWED_CUSTOM_OAUTH),
@@ -264,6 +265,13 @@ function parseOAuthServerEnv(): OAuthServerSettings | undefined {
 function parseBooleanFlag(value: string | undefined): boolean {
   if (value === undefined || value === "") return false;
   return value === "1" || value.toLowerCase() === "true";
+}
+
+function readRateLimitEnv(name: string, fallback: number): number {
+  const value = process.env[name];
+  if (value === undefined || value === "") return fallback;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 function parseOptionalBooleanFlag(value: string | undefined): boolean | undefined {

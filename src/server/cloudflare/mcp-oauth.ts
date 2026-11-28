@@ -10,6 +10,7 @@ import OAuthProvider, {
 } from "@cloudflare/workers-oauth-provider";
 import { timingSafeEqual } from "node:crypto";
 import { readBoundedResponseBytes } from "../../core/request.ts";
+import { compileOAuthScopePolicy } from "../oauth/scope-policy.ts";
 import { D1RuntimeDatabase } from "../storage/d1/runtime-store.ts";
 import { RuntimeTokenService } from "../storage/runtime-token-service.ts";
 import { renderMcpConsentPage } from "./mcp-consent-page.ts";
@@ -136,13 +137,7 @@ export function createMcpOAuthHandler(origin: string, runtime: RuntimeHandler): 
           // The backing grant cannot outlive the refresh chain (30d) it funds.
           const backing = await tokens.createToken(
             `MCP OAuth • ${client.clientName.slice(0, 120)}`,
-            {
-              allowedActions: [],
-              blockedActions: [],
-              allowedProxies: [],
-              allowedConnections: [],
-              allowedTriggers: [],
-            },
+            compileOAuthScopePolicy(grantedScopes),
             { expiresAt: new Date(Date.now() + options.refreshTokenTTL! * 1000).toISOString() },
           );
           try {

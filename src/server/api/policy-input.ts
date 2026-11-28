@@ -38,7 +38,7 @@ export function readTokenPolicy(body: JsonRequestBody, allowOmitted = false): To
 }
 
 const AUDIENCE_TYPES = new Set(["agent", "run", "service", "session"]);
-const RUN_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
+export const RUN_ID_PATTERN: RegExp = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
 
 /** Optional grant-envelope fields accepted by `POST /api/runtime-tokens`. */
 export function readTokenEnvelope(body: JsonRequestBody): {

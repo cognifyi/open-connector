@@ -239,6 +239,86 @@ describe("registered authorization scopes", () => {
   });
 });
 
+describe("connector scope compilation", () => {
+  it("admits oc: scopes at registration and compiles them into the backing grant", async () => {
+    const { app, database } = await setup();
+    const registered = await app.request(`${ISSUER}/api/oauth-clients`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${ADMIN_TOKEN}` },
+      body: JSON.stringify({
+        clientName: "Scoped client",
+        redirectUris: [REDIRECT],
+        tokenEndpointAuthMethod: "none",
+        scopes: ["mcp:access", "oc:actions:github.*", "oc:connections:*"],
+      }),
+    });
+    expect(registered.status).toBe(201);
+    const created = await readJson(registered);
+    const client = created.client as { clientId?: string } | undefined;
+    const clientId = String(client?.clientId);
+
+    const authorizeUrl = new URL(`${ISSUER}/oauth/mcp/authorize`);
+    authorizeUrl.search = new URLSearchParams({
+      response_type: "code",
+      client_id: clientId,
+      redirect_uri: REDIRECT,
+      scope: "mcp:access oc:actions:github.* oc:connections:*",
+      code_challenge: pkceChallenge,
+      code_challenge_method: "S256",
+    }).toString();
+    const consent = await app.request(authorizeUrl, { redirect: "manual" });
+    expect(consent.status).toBe(200);
+    const handle = /name="handle" value="([^"]+)"/.exec(await consent.text())?.[1];
+    const approved = await app.request(`${ISSUER}/oauth/mcp/authorize`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", origin: ISSUER },
+      body: new URLSearchParams({ handle: handle ?? "", decision: "approve", admin_token: ADMIN_TOKEN }).toString(),
+      redirect: "manual",
+    });
+    const code = new URL(approved.headers.get("location") ?? "").searchParams.get("code");
+    expect(code).toBeTruthy();
+
+    const exchanged = await app.request(`${ISSUER}/oauth/mcp/token`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code: code ?? "",
+        redirect_uri: REDIRECT,
+        client_id: clientId,
+        code_verifier: pkceVerifier,
+      }).toString(),
+    });
+    expect(exchanged.status).toBe(200);
+
+    const backing = (await database.runtimeTokenStore.list()).at(-1);
+    expect(backing).toMatchObject({
+      allowedActions: ["github.*"],
+      allowedConnections: ["*"],
+    });
+  });
+
+  it("rejects a malformed oc: scope at authorize with invalid_scope", async () => {
+    const { app } = await setup();
+    const clientId = await createManualClient(app);
+    const url = new URL(`${ISSUER}/oauth/mcp/authorize`);
+    url.search = new URLSearchParams({
+      response_type: "code",
+      client_id: clientId,
+      redirect_uri: REDIRECT,
+      scope: "mcp:access oc:bogus:x",
+      code_challenge: pkceChallenge,
+      code_challenge_method: "S256",
+      state: "bad-scope",
+    }).toString();
+    const response = await app.request(url, { redirect: "manual" });
+    // The client never registered oc:bogus:x, so this fails the registered-scope
+    // check first — which is also an invalid_scope redirect.
+    expect(response.status).toBe(302);
+    expect(new URL(response.headers.get("location") ?? "").searchParams.get("error")).toBe("invalid_scope");
+  });
+});
+
 describe("admin client scope validation", () => {
   it("rejects unsupported scopes on create with invalid_input", async () => {
     const { app } = await setup();
