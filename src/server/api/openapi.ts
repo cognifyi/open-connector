@@ -749,6 +749,7 @@ export function createOpenApiDocument(options: OpenApiDocumentOptions = {}): Ope
       },
     },
     "/api/runs": createRunsPath(),
+    "/api/runs/export": createRunExportPath(),
     "/api/runs/{id}": createRunDetailPath(),
     "/mcp": createMcpPath(),
     "/mcp/tools": getOperation("MCP", "List discovery-oriented MCP tool summaries.", {
@@ -1717,9 +1718,96 @@ function createRunsPath(): Record<string, unknown> {
           schema: { type: "boolean" },
           description: "Only return successful or failed runs.",
         },
+        {
+          name: "since",
+          in: "query",
+          required: false,
+          schema: { type: "string", format: "date-time" },
+          description: "Only return runs started at or after this ISO-8601 timestamp.",
+        },
       ],
       responses: {
         200: jsonResponse({ $ref: "#/components/schemas/RunLogPage" }),
+      },
+    },
+  };
+}
+
+function createRunExportPath(): Record<string, unknown> {
+  return {
+    get: {
+      tags: ["Runs"],
+      summary: "Stream run audit rows as NDJSON.",
+      description:
+        "Returns one RunLog JSON object per line, newest first, for the selected tenant. " +
+        "Follow the x-next-cursor response header to paginate.",
+      parameters: [
+        {
+          name: "limit",
+          in: "query",
+          required: false,
+          schema: { type: "integer", minimum: 1, maximum: 100, default: 50 },
+          description: "Maximum number of runs to return.",
+        },
+        {
+          name: "cursor",
+          in: "query",
+          required: false,
+          schema: { type: "string" },
+          description: "Cursor returned by the previous page.",
+        },
+        {
+          name: "service",
+          in: "query",
+          required: false,
+          schema: { type: "string" },
+          description: "Only return runs whose action id belongs to this service.",
+        },
+        {
+          name: "actionId",
+          in: "query",
+          required: false,
+          schema: { type: "string", maxLength: 256 },
+          description: "Only return runs for this exact action id.",
+        },
+        {
+          name: "caller",
+          in: "query",
+          required: false,
+          schema: { type: "string", enum: ["http", "mcp", "web"] },
+          description: "Only return runs from this runtime entry point.",
+        },
+        {
+          name: "ok",
+          in: "query",
+          required: false,
+          schema: { type: "boolean" },
+          description: "Only return successful or failed runs.",
+        },
+        {
+          name: "since",
+          in: "query",
+          required: false,
+          schema: { type: "string", format: "date-time" },
+          description: "Only return runs started at or after this ISO-8601 timestamp.",
+        },
+        {
+          name: "tenant",
+          in: "query",
+          required: false,
+          schema: { type: "string" },
+          description: "Tenant whose run stream to export (admin token required for non-local tenants).",
+        },
+      ],
+      responses: {
+        200: {
+          description: "Newline-delimited RunLog objects; x-next-cursor header continues the stream.",
+          content: {
+            "application/x-ndjson": {
+              schema: { type: "string" },
+            },
+          },
+        },
       },
     },
   };
